@@ -1,0 +1,287 @@
+/* Impress Voice Input - 全局样式表 */
+
+/* ========== 全局 ========== */
+* {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+QMainWindow, QWidget {
+    background-color: #ffffff;
+    color: #2c3e50;
+}
+
+/* ========== QTabWidget ========== */
+QTabWidget::pane {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    background: #fafafa;
+}
+
+QTabBar::tab {
+    background: #f0f2f5;
+    border: 1px solid #dcdfe6;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 10px 24px;
+    margin-right: 2px;
+    font-size: 14px;
+    color: #606266;
+}
+
+QTabBar::tab:selected {
+    background: #ffffff;
+    border-bottom: 2px solid #409eff;
+    color: #409eff;
+    font-weight: bold;
+}
+
+QTabBar::tab:hover {
+    color: #409eff;
+}
+
+/* ========== QPushButton ========== */
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 6px 16px;
+    color: #606266;
+    font-size: 13px;
+}
+
+QPushButton:hover {
+    background-color: #ecf5ff;
+    border-color: #b3d8ff;
+    color: #409eff;
+}
+
+QPushButton:pressed {
+    background-color: #e6f0ff;
+}
+
+/* 主要操作按钮 */
+QPushButton[objectName="saveBtn"],
+QPushButton[text="保存配置"] {
+    background-color: #409eff;
+    color: #ffffff;
+    border: 1px solid #409eff;
+}
+
+QPushButton[objectName="saveBtn"]:hover,
+QPushButton[text="保存配置"]:hover {
+    background-color: #66b1ff;
+}
+
+/* 危险操作按钮 */
+QPushButton[text="停止"],
+QPushButton[text="停止录音"] {
+    background-color: #f56c6c;
+    color: #ffffff;
+    border: 1px solid #f56c6c;
+}
+
+QPushButton[text="停止"]:hover,
+QPushButton[text="停止录音"]:hover {
+    background-color: #f78989;
+}
+
+/* ========== QGroupBox ========== */
+QGroupBox {
+    font-weight: bold;
+    border: 1px solid #dcdfe6;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding-top: 16px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    color: #303133;
+}
+
+/* ========== QLabel ========== */
+QLabel {
+    color: #606266;
+}
+
+/* ========== QLineEdit ========== */
+QLineEdit {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 5px 10px;
+    background: #ffffff;
+}
+
+QLineEdit:focus {
+    border-color: #409eff;
+}
+
+QLineEdit[readOnly="true"] {
+    background-color: #f5f7fa;
+}
+
+/* ========== QComboBox ========== */
+QComboBox {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 5px 10px;
+    background: #ffffff;
+    min-width: 120px;
+}
+
+QComboBox:hover {
+    border-color: #c0c4cc;
+}
+
+QComboBox:focus {
+    border-color: #409eff;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 24px;
+}
+
+/* ========== QSpinBox / QDoubleSpinBox ========== */
+QSpinBox, QDoubleSpinBox {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 4px 8px;
+    background: #ffffff;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #409eff;
+}
+
+/* ========== QProgressBar ========== */
+QProgressBar {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    text-align: center;
+    height: 20px;
+    background: #f5f7fa;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #409eff, stop:1 #66b1ff);
+    border-radius: 3px;
+}
+
+/* ========== QTextEdit ========== */
+QTextEdit {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 8px;
+    background: #ffffff;
+    selection-background-color: #ecf5ff;
+}
+
+QTextEdit:focus {
+    border-color: #409eff;
+}
+
+/* ========== QListWidget ========== */
+QListWidget {
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    background: #ffffff;
+    padding: 4px;
+}
+
+QListWidget::item {
+    padding: 8px;
+    border-radius: 4px;
+}
+
+QListWidget::item:selected {
+    background-color: #ecf5ff;
+    color: #409eff;
+}
+
+QListWidget::item:hover {
+    background-color: #f5f7fa;
+}
+
+/* ========== QCheckBox ========== */
+QCheckBox {
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #dcdfe6;
+    border-radius: 3px;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #409eff;
+    border-color: #409eff;
+}
+
+/* ========== QMenu / QMenuBar ========== */
+QMenuBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #dcdfe6;
+    padding: 2px;
+}
+
+QMenuBar::item:selected {
+    background-color: #ecf5ff;
+    color: #409eff;
+}
+
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QMenu::item:selected {
+    background-color: #ecf5ff;
+    color: #409eff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: #ebeef5;
+    margin: 4px 0;
+}
+
+/* ========== QMessageBox ========== */
+QMessageBox {
+    background-color: #ffffff;
+}
+
+QMessageBox QLabel {
+    color: #303133;
+}
+
+/* ========== 滚动条 ========== */
+QScrollBar:vertical {
+    border: none;
+    background: #f5f7fa;
+    width: 8px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #c0c4cc;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #909399;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}

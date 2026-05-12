@@ -1,0 +1,66 @@
+# =====================
+# 构建产物
+# =====================
+build/
+cmake-build-*/
+out/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+
+# =====================
+# IDE / 编辑器
+# =====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.code-workspace
+
+# =====================
+# CMake
+# =====================
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# =====================
+# 第三方依赖 (单独管理)
+# =====================
+# PortAudio 仓库体积大，不纳入版本控制
+third_party/portaudio/
+# ONNX Runtime 体积大，不纳入版本控制
+third_party/onnxruntime/
+# 保留 header-only 库（体积小）
+!third_party/dr_libs/
+!third_party/nlohmann_json/
+
+# =====================
+# 模型文件 (体积大，不包含)
+# =====================
+models/*.onnx
+models/*.bin
+models/*.pb
+models/*.gguf
+!models/.gitkeep
+
+# =====================
+# 用户数据
+# =====================
+# 默认配置保留，用户配置不纳入
+!configs/default_config.json
+configs/user_config.json
+configs/config.json
+
+# 日志
+*.log

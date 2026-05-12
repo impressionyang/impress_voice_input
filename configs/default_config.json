@@ -1,0 +1,29 @@
+{
+    "version": 1,
+    "stt": {
+        "model_path": "",
+        "model_type": "whisper",
+        "device": "cpu",
+        "num_threads": 4,
+        "sample_rate": 16000,
+        "language": "zh",
+        "streaming": true,
+        "beam_size": 5,
+        "temperature": 0.0
+    },
+    "audio": {
+        "input_device": -1,
+        "buffer_size_ms": 20,
+        "chunk_duration_ms": 3000,
+        "padding_ms": 500
+    },
+    "ui": {
+        "theme": "light",
+        "font_size": 14,
+        "show_waveform": true,
+        "show_confidence": true
+    },
+    "shortcuts": {
+        "toggle_recording": "Ctrl+Space"
+    }
+}
