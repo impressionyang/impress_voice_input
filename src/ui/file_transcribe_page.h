@@ -9,6 +9,7 @@ class QTextEdit;
 class QProgressBar;
 class QListWidget;
 class QComboBox;
+class QByteArray;
 
 namespace impress {
 
@@ -21,6 +22,9 @@ struct TranscribeTask {
     QString status; // "等待中", "处理中", "完成", "失败"
     QString result;
     double progress = 0.0;
+    double durationSec = 0.0;     // 音频时长（秒）
+    int sampleRate = 0;            // 采样率
+    int channels = 0;              // 声道数
 };
 
 /**
@@ -41,7 +45,8 @@ private slots:
     void onStartTranscribe();
     void onStopTranscribe();
     void onExportResult();
-    void onTaskComplete(int index, const QString& text, bool success);
+    void onTaskComplete(int index, const QString& text, bool success,
+                        double durationSec, int sampleRate, int channels);
     void onAllComplete();
 
 private:
@@ -49,6 +54,12 @@ private:
     void updateUIState();
     void startBatchTranscription();
     void processFileAsync(int index);
+
+    // 导出辅助方法
+    QString exportTXT(const QList<TranscribeTask>& tasks) const;
+    QString exportSRT(const QList<TranscribeTask>& tasks) const;
+    QByteArray exportJSON(const QList<TranscribeTask>& tasks) const;
+    QString formatSRTTime(double seconds) const;
 
     ConfigManager* configManager_;
     STTEngine* sttEngine_;

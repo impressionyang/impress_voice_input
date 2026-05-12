@@ -21,6 +21,11 @@
 #include <QFileInfo>
 #include <QFuture>
 #include <QtConcurrent>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QFile>
+#include <QRegularExpression>
 
 static const char* const kTag = "FileTranscribePage";
 
@@ -212,12 +217,17 @@ void FileTranscribePage::processFileAsync(int index) {
     (void)QtConcurrent::run([this, index, taskFile = task.filePath]() {
         QString text;
         bool success = false;
+        double durationSec = 0.0;
+        int sampleRate = 0;
+        int channels = 0;
 
         // 创建独立的解码器和引擎实例（避免线程冲突）
         AudioDecoder decoder;
         if (decoder.decode(taskFile)) {
             const auto& samples = decoder.samples();
-            int sampleRate = decoder.sampleRate();
+            sampleRate = decoder.sampleRate();
+            channels = decoder.channels();
+            durationSec = decoder.duration();
 
             // 使用已加载的引擎进行推理（引擎是线程安全的）
             auto result = sttEngine_->infer(samples, sampleRate,
@@ -227,20 +237,27 @@ void FileTranscribePage::processFileAsync(int index) {
         }
 
         // 回到主线程更新 UI
-        QMetaObject::invokeMethod(this, [this, index, text, success]() {
+        QMetaObject::invokeMethod(this, [this, index, text, success,
+                                          durationSec, sampleRate, channels]() {
             activeWorkers_--;
-            onTaskComplete(index, text, success);
+            onTaskComplete(index, text, success, durationSec, sampleRate, channels);
         }, Qt::QueuedConnection);
     });
 }
 
-void FileTranscribePage::onTaskComplete(int index, const QString& text, bool success) {
+void FileTranscribePage::onTaskComplete(int index, const QString& text, bool success,
+                                        double durationSec, int sampleRate, int channels) {
     if (index >= tasks_.size()) return;
 
     auto& task = tasks_[index];
     task.result = text;
     task.status = success ? "完成" : "失败";
     task.progress = 1.0;
+    if (success) {
+        task.durationSec = durationSec;
+        task.sampleRate = sampleRate;
+        task.channels = channels;
+    }
 
     if (success) {
         resultText_->append(
@@ -279,24 +296,144 @@ void FileTranscribePage::onAllComplete() {
 }
 
 void FileTranscribePage::onExportResult() {
-    if (resultText_->toPlainText().isEmpty()) {
+    // 过滤出成功完成的任务
+    QList<TranscribeTask> completedTasks;
+    for (const auto& task : tasks_) {
+        if (task.status == "完成") {
+            completedTasks.append(task);
+        }
+    }
+
+    if (completedTasks.isEmpty()) {
         QMessageBox::information(this, "提示", "没有可导出的结果");
         return;
     }
 
     QString format = exportFormat_->currentText();
-    QString ext = (format == "TXT") ? "txt" : (format == "JSON") ? "json" : "srt";
-    QString filter = QString("%1 文件 (*.%2)").arg(format, ext);
+    QString ext, filter;
+    if (format.startsWith("SRT")) {
+        ext = "srt";
+        filter = "SRT 字幕文件 (*.srt)";
+    } else if (format == "JSON") {
+        ext = "json";
+        filter = "JSON 文件 (*.json)";
+    } else {
+        ext = "txt";
+        filter = "文本文件 (*.txt)";
+    }
 
     QString path = QFileDialog::getSaveFileName(this, "导出结果", "", filter);
     if (path.isEmpty()) return;
 
     QFile file(path);
-    if (file.open(QIODevice::WriteOnly)) {
-        file.write(resultText_->toPlainText().toUtf8());
-        file.close();
-        statusLabel_->setText(QString("已导出: %1").arg(path));
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::critical(this, "错误", "无法写入文件");
+        return;
     }
+
+    if (ext == "srt") {
+        file.write(exportSRT(completedTasks).toUtf8());
+    } else if (ext == "json") {
+        file.write(exportJSON(completedTasks));
+    } else {
+        file.write(exportTXT(completedTasks).toUtf8());
+    }
+
+    file.close();
+    statusLabel_->setText(QString("已导出: %1").arg(path));
+}
+
+QString FileTranscribePage::exportTXT(const QList<TranscribeTask>& tasks) const {
+    QString content;
+    for (const auto& task : tasks) {
+        content += QString("=== %1 ===\n").arg(QFileInfo(task.filePath).fileName());
+        if (task.durationSec > 0) {
+            int min = static_cast<int>(task.durationSec) / 60;
+            int sec = static_cast<int>(task.durationSec) % 60;
+            content += QString("时长: %1:%2 | %3Hz | %4声道\n\n")
+                .arg(min, 2, 10, QChar('0'))
+                .arg(sec, 2, 10, QChar('0'))
+                .arg(task.sampleRate)
+                .arg(task.channels);
+        }
+        content += task.result + "\n\n";
+    }
+    return content;
+}
+
+QString FileTranscribePage::exportSRT(const QList<TranscribeTask>& tasks) const {
+    QString srt;
+    int subtitleIndex = 1;
+
+    for (const auto& task : tasks) {
+        QString fileName = QFileInfo(task.filePath).fileName();
+        srt += QString("# %1\n\n").arg(fileName);
+
+        // 将文本按句号/换行分段，均匀分配到音频时长内
+        QStringList sentences = task.result.split(
+            QRegularExpression("[。！？\n]"), Qt::SkipEmptyParts);
+
+        if (sentences.isEmpty()) {
+            sentences << task.result;
+        }
+
+        double duration = task.durationSec > 0 ? task.durationSec : 10.0;
+        double segmentDuration = duration / qMax(sentences.size(), 1);
+
+        for (int i = 0; i < sentences.size(); ++i) {
+            double startSec = i * segmentDuration;
+            double endSec = (i + 1) * segmentDuration;
+            if (endSec > duration) endSec = duration;
+
+            srt += QString("%1\n").arg(subtitleIndex++);
+            srt += QString("%1 --> %2\n")
+                .arg(formatSRTTime(startSec), formatSRTTime(endSec));
+            srt += sentences[i].trimmed() + "\n\n";
+        }
+    }
+    return srt;
+}
+
+QString FileTranscribePage::formatSRTTime(double seconds) const {
+    int h = static_cast<int>(seconds) / 3600;
+    int m = (static_cast<int>(seconds) % 3600) / 60;
+    int s = static_cast<int>(seconds) % 60;
+    int ms = static_cast<int>((seconds - static_cast<int>(seconds)) * 1000);
+    return QString("%1:%2:%3,%4")
+        .arg(h, 2, 10, QChar('0'))
+        .arg(m, 2, 10, QChar('0'))
+        .arg(s, 2, 10, QChar('0'))
+        .arg(ms, 3, 10, QChar('0'));
+}
+
+QByteArray FileTranscribePage::exportJSON(const QList<TranscribeTask>& tasks) const {
+    QJsonArray filesArray;
+
+    for (const auto& task : tasks) {
+        QJsonObject fileObj;
+        fileObj["file"] = QFileInfo(task.filePath).fileName();
+        fileObj["path"] = task.filePath;
+        fileObj["status"] = task.status;
+
+        if (task.durationSec > 0) {
+            fileObj["duration_sec"] = task.durationSec;
+            fileObj["sample_rate"] = task.sampleRate;
+            fileObj["channels"] = task.channels;
+        }
+
+        fileObj["text"] = task.result;
+        fileObj["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+        filesArray.append(fileObj);
+    }
+
+    QJsonObject root;
+    root["app"] = "Impress Voice Input";
+    root["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    root["file_count"] = filesArray.size();
+    root["files"] = filesArray;
+
+    return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
 } // namespace impress
