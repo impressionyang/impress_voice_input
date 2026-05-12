@@ -161,9 +161,9 @@ std::vector<float> MelSpectrogram::stft(const std::vector<float>& samples, int f
     // 执行 FFT
     fft(fftInput);
 
-    // 计算幅度谱
+    // 计算幅度谱 (Whisper 使用 magnitude 而非 magnitude²)
     for (int k = 0; k < nFreq; k++) {
-        magnitude[k] = fftInput[k].magnitudeSq();
+        magnitude[k] = std::sqrt(fftInput[k].magnitudeSq());
     }
 
     return magnitude;

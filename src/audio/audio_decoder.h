@@ -5,6 +5,7 @@
 #include <QStringList>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 namespace impress {
 
@@ -20,7 +21,7 @@ public:
     explicit AudioDecoder(QObject* parent = nullptr);
     ~AudioDecoder() override;
 
-    /** @brief 支持的格式 */
+    /** @brief 支持的格式 (WAV, MP3, FLAC) */
     static QStringList supportedFormats();
 
     /** @brief 解码音频文件 */
@@ -49,6 +50,13 @@ signals:
     void error(const QString& message);
 
 private:
+#ifdef HAVE_DR_LIBS
+    bool decodeWav(const QString& filePath);
+    bool decodeMp3(const QString& filePath);
+    bool decodeFlac(const QString& filePath);
+    void convertToMono(const std::vector<short>& pcm16, uint64_t frameCount);
+#endif
+
     std::vector<float> samples_;
     int sampleRate_ = 0;
     int channels_ = 0;

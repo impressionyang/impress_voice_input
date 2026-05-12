@@ -1,6 +1,7 @@
 #include "stt_engine.h"
 #include "mel_spectrogram.h"
 #include "whisper_tokenizer.h"
+#include "audio_processor.h"
 #include "utils/logger.h"
 #include "utils/timer.h"
 
@@ -237,7 +238,8 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
     RecognitionResult result;
 
     QString lang = language.isEmpty() ? "zh" : language;
-    LOG_DEBUG(kTag, QString("推理语言: %1").arg(lang));
+    LOG_DEBUG(kTag, QString("推理语言: %1 (采样率: %2Hz, 样本数: %3)")
+        .arg(lang).arg(sampleRate).arg(samples.size()));
 
 #ifdef HAVE_ONNXRUNTIME
     if (!loaded_) {
@@ -247,15 +249,29 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
     }
 
     try {
-        // 1. 计算 Mel 频谱图
-        Timer melTimer;
-        MelSpectrogram melExtractor(kMelBins, 400, 160, sampleRate);
-        std::vector<float> melSpec = melExtractor.compute(samples);
-        int nFrames = melExtractor.nFrames(static_cast<int>(samples.size()));
-        if (nFrames <= 0) nFrames = 1;
-        LOG_DEBUG(kTag, QString("Mel 计算: %1 ms (%2 帧)").arg(melTimer.elapsedMs(), 0, 'f', 1).arg(nFrames));
+        // 1. 重采样到 Whisper 所需的 16kHz
+        Timer preprocessTimer;
+        std::vector<float> processedSamples = samples;
+        int currentSampleRate = sampleRate;
 
-        // 2. 运行 ONNX 推理
+        if (sampleRate != 16000) {
+            AudioProcessor processor(16000);
+            processedSamples = processor.resample(samples, sampleRate);
+            currentSampleRate = 16000;
+            LOG_DEBUG(kTag, QString("重采样: %1Hz -> %2Hz (%3 -> %4 样本)")
+                .arg(sampleRate).arg(currentSampleRate)
+                .arg(samples.size()).arg(processedSamples.size()));
+        }
+
+        // 2. Mel 频谱图提取
+        MelSpectrogram melExtractor(kMelBins, 400, 160, currentSampleRate);
+        std::vector<float> melSpec = melExtractor.compute(processedSamples);
+        int nFrames = melExtractor.nFrames(static_cast<int>(processedSamples.size()));
+        if (nFrames <= 0) nFrames = 1;
+        LOG_DEBUG(kTag, QString("Mel 计算: %1 ms (%2 帧)")
+            .arg(preprocessTimer.elapsedMs(), 0, 'f', 1).arg(nFrames));
+
+        // 3. 运行 ONNX 推理
         Timer inferTimer;
         QMutexLocker locker(&impl_->mutex);
 
@@ -277,7 +293,7 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
 
         LOG_DEBUG(kTag, QString("ONNX 推理: %1 ms").arg(inferTimer.elapsedMs(), 0, 'f', 1));
 
-        // 3. 解析输出
+        // 4. 解析输出
         auto& outputTensor = outputTensors[0];
         auto shape = outputTensor.GetTensorTypeAndShapeInfo().GetShape();
         const float* outputData = outputTensor.GetTensorMutableData<float>();
@@ -292,11 +308,12 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
 
         if (shape.size() == 2 && shape[1] == vocabSize) {
             // [1, vocab_size] - 直接输出
-            int bestToken = argmax(outputData, 0, std::min(vocabSize, 50256));
+            int searchEnd = std::min(vocabSize, 50256);
+            int bestToken = argmax(outputData, 0, searchEnd);
             if (!WhisperTokenizer::isSpecialToken(bestToken)) {
                 tokens.push_back(bestToken);
             }
-            auto probs = softmax(outputData, 0, std::min(vocabSize, 50256));
+            auto probs = softmax(outputData, 0, searchEnd);
             float maxProb = probs[0];
             for (size_t i = 1; i < probs.size(); i++) {
                 if (probs[i] > maxProb) maxProb = probs[i];
@@ -310,7 +327,8 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
 
             for (int t = 0; t < seqLen && static_cast<int>(tokens.size()) < kMaxTokens; t++) {
                 int offset = t * vocabSize;
-                int bestToken = argmax(outputData, offset, offset + vocabSize);
+                int searchEnd = std::min(offset + vocabSize, offset + 50256);
+                int bestToken = argmax(outputData, offset, searchEnd);
                 if (WhisperTokenizer::isSpecialToken(bestToken)) break;
                 if (!tokens.empty() && tokens.back() == bestToken) continue;
                 tokens.push_back(bestToken);
@@ -320,8 +338,8 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
                 float avgConf = 0.0f;
                 for (int t = 0; t < seqLen && t < static_cast<int>(tokens.size()); t++) {
                     int offset = t * vocabSize;
-                    int bestToken = argmax(outputData, offset, offset + vocabSize);
                     auto probs = softmax(outputData, offset, offset + vocabSize);
+                    int bestToken = argmax(outputData, offset, offset + vocabSize);
                     avgConf += probs[bestToken - offset];
                 }
                 result.confidence = avgConf / tokens.size();
@@ -332,7 +350,7 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
             return result;
         }
 
-        // 4. 解码 token 为文本
+        // 5. 解码 token 为文本
         if (tokens.empty()) {
             result.text = "";
         } else if (impl_->tokenizer.isLoaded()) {
