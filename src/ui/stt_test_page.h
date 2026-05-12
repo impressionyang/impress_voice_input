@@ -9,6 +9,7 @@ class QPushButton;
 class QComboBox;
 class QTextEdit;
 class QSpinBox;
+class QTimer;
 
 namespace impress {
 
@@ -19,9 +20,9 @@ class AudioCapture;
 /**
  * @brief STT 测试页面
  *
- * 实时麦克风采集 + 流式识别。
+ * 实时麦克风采集 + 周期性后台推理。
+ * 音频采集与推理分离，防止推理阻塞音频流。
  * 使用 SenseVoice 模型进行推理。
- * 模型异步加载，不阻塞 UI。
  */
 class STTTestPage : public QWidget {
     Q_OBJECT
@@ -36,16 +37,18 @@ private slots:
     void onModelLoaded(const QString& modelPath);
     void onModelLoadError(const QString& modelPath, const QString& error);
     void onModelUnloaded();
+    void onInferenceTimer();
 
 private:
     void setupUI();
     void updateUIState();
     void startAudioCapture();
-    void processAudioChunk(const std::vector<float>& samples, int sampleRate);
+    void startInferenceTimer();
 
     ConfigManager* configManager_;
     SenseVoiceEngine* sttEngine_;
     AudioCapture* audioCapture_;
+    QTimer* inferenceTimer_;
 
     // UI 控件
     QComboBox* deviceCombo_;
@@ -58,7 +61,9 @@ private:
 
     bool isRecording_ = false;
     bool isLoadingModel_ = false;
-    std::vector<float> chunkBuffer_;
+    bool isInferencing_ = false;
+    int audioSampleRate_ = 16000;
+    std::vector<float> audioBuffer_;
     QString currentModelPath_;
 };
 

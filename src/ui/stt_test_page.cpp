@@ -18,6 +18,8 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QTimer>
+#include <QtConcurrent>
 
 static const char* const kTag = "STTTestPage";
 
@@ -28,6 +30,7 @@ STTTestPage::STTTestPage(ConfigManager* configManager, QWidget* parent)
     , configManager_(configManager)
     , sttEngine_(new SenseVoiceEngine(this))
     , audioCapture_(new AudioCapture(this))
+    , inferenceTimer_(new QTimer(this))
 {
     setupUI();
 
@@ -40,6 +43,10 @@ STTTestPage::STTTestPage(ConfigManager* configManager, QWidget* parent)
             this, &STTTestPage::onModelLoadError);
     connect(sttEngine_, &SenseVoiceEngine::modelUnloaded,
             this, &STTTestPage::onModelUnloaded);
+
+    // 推理定时器：周期性触发后台推理
+    connect(inferenceTimer_, &QTimer::timeout,
+            this, &STTTestPage::onInferenceTimer);
 }
 
 STTTestPage::~STTTestPage() = default;
@@ -114,8 +121,11 @@ void STTTestPage::updateUIState() {
 void STTTestPage::onToggleRecording() {
     if (isRecording_) {
         audioCapture_->stop();
+        inferenceTimer_->stop();
         sttEngine_->unloadModel();
         isRecording_ = false;
+        isInferencing_ = false;
+        audioBuffer_.clear();
     } else {
         // 读取配置
         QString modelPath = configManager_->get("stt.model_path").toString();
@@ -172,49 +182,92 @@ void STTTestPage::onModelLoadError(const QString& modelPath, const QString& erro
 
 void STTTestPage::onModelUnloaded() {
     isLoadingModel_ = false;
+    isInferencing_ = false;
     statusLabel_->setText("模型已卸载");
 }
 
 void STTTestPage::startAudioCapture() {
     int deviceIdx = deviceCombo_->currentIndex() - 1;
-    int sampleRate = configManager_->get("stt.sample_rate").toInt();
+    audioSampleRate_ = configManager_->get("stt.sample_rate").toInt();
 
-    if (!audioCapture_->start(deviceIdx, sampleRate)) {
+    if (!audioCapture_->start(deviceIdx, audioSampleRate_)) {
         QMessageBox::critical(this, "错误", "无法启动音频采集");
         return;
     }
+
     isRecording_ = true;
+    audioBuffer_.clear();
+    isInferencing_ = false;
+
+    // 启动周期性推理定时器
+    startInferenceTimer();
+
     statusLabel_->setText(QString("录音中 | 模型: %1").arg(
         QFileInfo(currentModelPath_).fileName()));
     updateUIState();
 }
 
-void STTTestPage::onAudioDataReady(const std::vector<float>& samples, int sampleRate) {
-    chunkBuffer_.insert(chunkBuffer_.end(), samples.begin(), samples.end());
-
-    int chunkSize = configManager_->get("stt.sample_rate").toInt()
-                  * chunkSizeSpin_->value() / 1000;
-
-    if (static_cast<int>(chunkBuffer_.size()) >= chunkSize) {
-        std::vector<float> chunk(chunkBuffer_.begin(), chunkBuffer_.begin() + chunkSize);
-        chunkBuffer_.erase(chunkBuffer_.begin(), chunkBuffer_.begin() + chunkSize);
-
-        waveform_->setSamples(samples);
-        processAudioChunk(chunk, sampleRate);
-    } else {
-        waveform_->setSamples(samples);
-    }
+void STTTestPage::startInferenceTimer() {
+    int interval = chunkSizeSpin_->value(); // 与推理间隔同步
+    inferenceTimer_->start(interval);
 }
 
-void STTTestPage::processAudioChunk(const std::vector<float>& samples, int sampleRate) {
-    // 模型已在 onToggleRecording 中异步加载，此处防御性检查
-    if (!sttEngine_->isLoaded()) {
+void STTTestPage::onAudioDataReady(const std::vector<float>& samples, int /* sampleRate */) {
+    // 仅缓存音频数据，不直接调用推理
+    // 避免推理阻塞音频采集线程
+    audioBuffer_.insert(audioBuffer_.end(), samples.begin(), samples.end());
+
+    // 更新波形显示（使用最新数据片段）
+    waveform_->setSamples(samples);
+}
+
+void STTTestPage::onInferenceTimer() {
+    if (!sttEngine_->isLoaded() || isInferencing_) {
         return;
     }
 
-    auto result = sttEngine_->infer(samples, sampleRate,
-        configManager_->get("stt.language").toString());
-    emit onRecognitionResult(result.text, result.confidence, result.latency_ms, result.isFinal);
+    int chunkSize = audioSampleRate_ * chunkSizeSpin_->value() / 1000;
+
+    if (static_cast<int>(audioBuffer_.size()) < chunkSize) {
+        return; // 缓冲区数据不足，等待下一次
+    }
+
+    // 提取一个推理块的音频
+    std::vector<float> chunk(audioBuffer_.begin(), audioBuffer_.begin() + chunkSize);
+    audioBuffer_.erase(audioBuffer_.begin(), audioBuffer_.begin() + chunkSize);
+
+    // 在后台线程执行推理
+    isInferencing_ = true;
+    statusLabel_->setText("推理中...");
+
+    int sampleRate = audioSampleRate_;
+    QString language = configManager_->get("stt.language").toString();
+
+    (void)QtConcurrent::run([this, chunk, sampleRate, language]() {
+        auto result = sttEngine_->infer(chunk, sampleRate, language);
+
+        // 回到主线程更新 UI
+        QMetaObject::invokeMethod(this, [this, result]() {
+            isInferencing_ = false;
+
+            if (result.text.isEmpty() && !result.text.isNull()) {
+                // 静音段
+                latencyLabel_->setText(QString("延迟: %1 ms").arg(result.latency_ms, 0, 'f', 1));
+            } else {
+                emit onRecognitionResult(result.text, result.confidence,
+                                          result.latency_ms, result.isFinal);
+            }
+
+            // 更新状态
+            if (isRecording_) {
+                int bufMs = (audioSampleRate_ > 0)
+                    ? static_cast<int>(audioBuffer_.size() * 1000 / audioSampleRate_)
+                    : 0;
+                statusLabel_->setText(
+                    QString("录音中 | 缓冲区: %1 ms").arg(bufMs));
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void STTTestPage::onRecognitionResult(const QString& text, float confidence,
