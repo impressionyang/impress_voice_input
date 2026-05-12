@@ -153,7 +153,13 @@ bool SenseVoiceEngine::loadModelSync(const QString& modelPath,
 {
     if (loaded_) {
         LOG_WARNING(kTag, "模型已加载，先卸载再加载");
-        unloadModel();
+        // 内联清理，避免调用 unloadModel() 导致 mutex 递归死锁
+        impl_->session.reset();
+        impl_->sessionOptions.reset();
+        impl_->env.reset();
+        impl_->features.reset();
+        impl_->tokenizer = SenseVoiceTokenizer();
+        loaded_ = false;
     }
 
     QString errorMsg;
@@ -176,7 +182,13 @@ void SenseVoiceEngine::loadModelAsync(const QString& modelPath,
 {
     if (loaded_) {
         LOG_WARNING(kTag, "模型已加载，先卸载再加载");
-        unloadModel();
+        // 内联清理，避免调用 unloadModel() 导致 mutex 递归死锁
+        impl_->session.reset();
+        impl_->sessionOptions.reset();
+        impl_->env.reset();
+        impl_->features.reset();
+        impl_->tokenizer = SenseVoiceTokenizer();
+        loaded_ = false;
     }
 
     LOG_INFO(kTag, QString("异步加载 SenseVoice 模型: %1").arg(modelPath));

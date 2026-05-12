@@ -9,12 +9,21 @@ static const char* const kTag = "AudioCapture";
 
 namespace impress {
 
-struct AudioCapture::Impl {
+// 预分配缓冲区，避免在实时回调中分配内存
+static constexpr int kMaxBufferSize = 8192;
+
+// 回调上下文：独立于 Impl 的 POD 结构，供静态回调使用
+struct CallbackContext {
+    AudioCapture* owner = nullptr;
 #ifdef HAVE_PORTAUDIO
     PaStream* stream = nullptr;
+    float buffer[kMaxBufferSize];
 #endif
-    AudioCapture* owner = nullptr;
     int sampleRate = 16000;
+};
+
+struct AudioCapture::Impl {
+    CallbackContext ctx;
 };
 
 static int paCallback(const void* input, void* /*output*/,
@@ -24,10 +33,23 @@ static int paCallback(const void* input, void* /*output*/,
                       void* userData)
 {
 #ifdef HAVE_PORTAUDIO
-    auto* capture = static_cast<AudioCapture*>(userData);
+    auto* ctx = static_cast<CallbackContext*>(userData);
+
     const float* samples = static_cast<const float*>(input);
-    std::vector<float> data(samples, samples + frameCount);
-    emit capture->audioDataReady(data, 16000);
+
+    // 使用预分配缓冲区，避免实时线程中分配内存
+    unsigned long count = frameCount;
+    if (count > kMaxBufferSize) count = kMaxBufferSize;
+
+    // 拷贝到预分配缓冲区
+    for (unsigned long i = 0; i < count; i++) {
+        ctx->buffer[i] = samples[i];
+    }
+
+    // 发射信号（Qt 使用 QueuedConnection，线程安全）
+    std::vector<float> data(ctx->buffer, ctx->buffer + count);
+    emit ctx->owner->audioDataReady(data, ctx->sampleRate);
+
     return paContinue;
 #else
     (void)input; (void)frameCount; (void)userData;
@@ -39,7 +61,7 @@ AudioCapture::AudioCapture(QObject* parent)
     : QObject(parent)
     , impl_(std::make_unique<Impl>())
 {
-    impl_->owner = this;
+    impl_->ctx.owner = this;
 }
 
 AudioCapture::~AudioCapture() {
@@ -78,37 +100,55 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         return false;
     }
 
+    int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
+    if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
+        LOG_ERROR(kTag, QString("无效的音频设备索引: %1").arg(deviceIndex));
+        Pa_Terminate();
+        return false;
+    }
+
+    const PaDeviceInfo* devInfo = Pa_GetDeviceInfo(devIdx);
+    if (!devInfo || devInfo->maxInputChannels <= 0) {
+        LOG_ERROR(kTag, "所选设备不是输入设备");
+        Pa_Terminate();
+        return false;
+    }
+
     PaStreamParameters inputParams{};
-    inputParams.device = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
+    inputParams.device = devIdx;
     inputParams.channelCount = 1;
     inputParams.sampleFormat = paFloat32 | paNonInterleaved;
-    inputParams.suggestedLatency =
-        Pa_GetDeviceInfo(inputParams.device)->defaultLowInputLatency;
+    // 使用高延迟以避免回调过快
+    inputParams.suggestedLatency = devInfo->defaultHighInputLatency;
+
+    int framesPerBuffer = sampleRate * bufferSizeMs / 1000;
+    if (framesPerBuffer < 256) framesPerBuffer = 256;
 
     PaError err = Pa_OpenStream(
-        &impl_->stream, &inputParams, nullptr, sampleRate,
-        static_cast<unsigned long>(sampleRate * bufferSizeMs / 1000),
-        paClipOff, paCallback, this);
+        &impl_->ctx.stream, &inputParams, nullptr, sampleRate,
+        static_cast<unsigned long>(framesPerBuffer),
+        paClipOff, paCallback, &impl_->ctx);
 
-    if (err != paNoError || !impl_->stream) {
+    if (err != paNoError || !impl_->ctx.stream) {
         LOG_ERROR(kTag, QString("打开音频流失败: %1").arg(Pa_GetErrorText(err)));
         Pa_Terminate();
         return false;
     }
 
-    err = Pa_StartStream(impl_->stream);
+    err = Pa_StartStream(impl_->ctx.stream);
     if (err != paNoError) {
         LOG_ERROR(kTag, QString("启动音频流失败: %1").arg(Pa_GetErrorText(err)));
-        Pa_CloseStream(impl_->stream);
-        impl_->stream = nullptr;
+        Pa_CloseStream(impl_->ctx.stream);
+        impl_->ctx.stream = nullptr;
         Pa_Terminate();
         return false;
     }
 
-    impl_->sampleRate = sampleRate;
+    impl_->ctx.sampleRate = sampleRate;
     running_ = true;
     emit runningChanged(true);
-    LOG_INFO(kTag, QString("音频采集已启动 (设备: %1, 采样率: %2)").arg(deviceIndex).arg(sampleRate));
+    LOG_INFO(kTag, QString("音频采集已启动 (设备: %1, 采样率: %2, 缓冲区: %3ms)")
+        .arg(deviceIndex).arg(sampleRate).arg(bufferSizeMs));
     return true;
 #else
     LOG_ERROR(kTag, "PortAudio 未编译启用");
@@ -121,10 +161,10 @@ void AudioCapture::stop() {
     if (!running_) return;
 
 #ifdef HAVE_PORTAUDIO
-    if (impl_->stream) {
-        Pa_StopStream(impl_->stream);
-        Pa_CloseStream(impl_->stream);
-        impl_->stream = nullptr;
+    if (impl_->ctx.stream) {
+        Pa_StopStream(impl_->ctx.stream);
+        Pa_CloseStream(impl_->ctx.stream);
+        impl_->ctx.stream = nullptr;
     }
     Pa_Terminate();
 #endif
