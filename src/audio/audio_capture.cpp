@@ -12,6 +12,27 @@ namespace impress {
 // 预分配缓冲区，避免在实时回调中分配内存
 static constexpr int kMaxBufferSize = 8192;
 
+// 全局 PortAudio 初始化状态
+static bool gPaInitialized = false;
+
+/** 安全初始化 PortAudio（多次调用不报错） */
+static bool ensurePaInitialized() {
+    if (gPaInitialized) return true;
+    if (Pa_Initialize() == paNoError) {
+        gPaInitialized = true;
+        return true;
+    }
+    return false;
+}
+
+/** 安全终止 PortAudio */
+static void safePaTerminate() {
+    if (gPaInitialized) {
+        Pa_Terminate();
+        gPaInitialized = false;
+    }
+}
+
 // 回调上下文：独立于 Impl 的 POD 结构，供静态回调使用
 struct CallbackContext {
     AudioCapture* owner = nullptr;
@@ -72,17 +93,17 @@ QStringList AudioCapture::getDeviceList() {
     QStringList devices;
     devices << "默认设备";
 #ifdef HAVE_PORTAUDIO
-    Pa_Terminate(); // 确保未初始化
-    if (Pa_Initialize() == paNoError) {
-        int count = Pa_GetDeviceCount();
-        for (int i = 0; i < count; ++i) {
-            const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
-            if (info && info->maxInputChannels > 0) {
-                devices << QString("%1 (CH:%2, SR:%3)").arg(
-                    info->name).arg(info->maxInputChannels).arg(info->defaultSampleRate);
-            }
+    if (!ensurePaInitialized()) {
+        LOG_ERROR(kTag, "PortAudio 初始化失败");
+        return devices;
+    }
+    int count = Pa_GetDeviceCount();
+    for (int i = 0; i < count; ++i) {
+        const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+        if (info && info->maxInputChannels > 0) {
+            devices << QString("%1 (CH:%2, SR:%3)").arg(
+                info->name).arg(info->maxInputChannels).arg(info->defaultSampleRate);
         }
-        Pa_Terminate();
     }
 #endif
     return devices;
@@ -95,22 +116,20 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
     }
 
 #ifdef HAVE_PORTAUDIO
-    if (Pa_Initialize() != paNoError) {
+    if (!ensurePaInitialized()) {
         LOG_ERROR(kTag, "PortAudio 初始化失败");
         return false;
     }
 
     int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
     if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
-        LOG_ERROR(kTag, QString("无效的音频设备索引: %1").arg(deviceIndex));
-        Pa_Terminate();
+        LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)").arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
         return false;
     }
 
     const PaDeviceInfo* devInfo = Pa_GetDeviceInfo(devIdx);
     if (!devInfo || devInfo->maxInputChannels <= 0) {
         LOG_ERROR(kTag, "所选设备不是输入设备");
-        Pa_Terminate();
         return false;
     }
 
@@ -131,7 +150,6 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
 
     if (err != paNoError || !impl_->ctx.stream) {
         LOG_ERROR(kTag, QString("打开音频流失败: %1").arg(Pa_GetErrorText(err)));
-        Pa_Terminate();
         return false;
     }
 
@@ -140,7 +158,6 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         LOG_ERROR(kTag, QString("启动音频流失败: %1").arg(Pa_GetErrorText(err)));
         Pa_CloseStream(impl_->ctx.stream);
         impl_->ctx.stream = nullptr;
-        Pa_Terminate();
         return false;
     }
 
@@ -166,7 +183,7 @@ void AudioCapture::stop() {
         Pa_CloseStream(impl_->ctx.stream);
         impl_->ctx.stream = nullptr;
     }
-    Pa_Terminate();
+    safePaTerminate();
 #endif
 
     running_ = false;
