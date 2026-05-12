@@ -188,7 +188,8 @@ void FileTranscribePage::processNextFile() {
         const auto& samples = audioDecoder_->samples();
         int sampleRate = audioDecoder_->sampleRate();
 
-        auto result = sttEngine_->infer(samples, sampleRate, false);
+        auto result = sttEngine_->infer(samples, sampleRate,
+            configManager_->get("stt.language").toString());
         task.result = result.text;
         task.status = "完成";
         task.progress = 1.0;

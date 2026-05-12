@@ -18,6 +18,7 @@ struct RecognitionResult {
  * @brief STT 推理引擎
  *
  * 封装 ONNX Runtime 推理逻辑，负责模型加载、音频推理和结果输出。
+ * 支持 Whisper ONNX 模型（单模型或 encoder/decoder 分离模型）。
  * 模型加载在后台线程执行，不阻塞 UI。
  */
 class STTEngine : public QObject {
@@ -26,7 +27,7 @@ public:
     explicit STTEngine(QObject* parent = nullptr);
     ~STTEngine() override;
 
-    /** @brief 同步加载模型（阻塞，不推荐在 UI 线程调用） */
+    /** @brief 同步加载模型 */
     bool loadModelSync(const QString& modelPath,
                        const QString& device = "cpu",
                        int numThreads = 4);
@@ -42,15 +43,18 @@ public:
     /** @brief 是否已加载模型 */
     bool isLoaded() const;
 
+    /** @brief 获取词表大小（加载模型后可查询） */
+    int vocabSize() const;
+
     /**
      * @brief 推理音频数据
      * @param samples 归一化后的 PCM 浮点样本（范围 [-1, 1]）
      * @param sampleRate 采样率
-     * @param isStreaming 是否流式推理
+     * @param language 识别语言代码（如 "zh", "en"），空则自动检测
      */
     RecognitionResult infer(const std::vector<float>& samples,
                             int sampleRate,
-                            bool isStreaming = true);
+                            const QString& language = QString());
 
 signals:
     void modelLoaded(const QString& modelPath);

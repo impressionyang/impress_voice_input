@@ -39,6 +39,8 @@ set(SOURCES
 
     # Core
     src/core/stt_engine.cpp
+    src/core/mel_spectrogram.cpp
+    src/core/whisper_tokenizer.cpp
     src/core/audio_processor.cpp
     src/core/decoder.cpp
     src/core/tokenizer.cpp
@@ -68,6 +70,8 @@ set(HEADERS
     src/app/config_manager.h
 
     src/core/stt_engine.h
+    src/core/mel_spectrogram.h
+    src/core/whisper_tokenizer.h
     src/core/audio_processor.h
     src/core/decoder.h
     src/core/tokenizer.h

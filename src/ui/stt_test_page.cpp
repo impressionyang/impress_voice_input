@@ -211,7 +211,8 @@ void STTTestPage::processAudioChunk(const std::vector<float>& samples, int sampl
         return;
     }
 
-    auto result = sttEngine_->infer(samples, sampleRate, true);
+    auto result = sttEngine_->infer(samples, sampleRate,
+        configManager_->get("stt.language").toString());
     emit onRecognitionResult(result.text, result.confidence, result.latency_ms, result.isFinal);
 }
 
