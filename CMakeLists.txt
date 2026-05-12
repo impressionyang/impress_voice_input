@@ -49,8 +49,7 @@ set(SOURCES
     src/core/mel_spectrogram.cpp
     src/core/whisper_tokenizer.cpp
     src/core/audio_processor.cpp
-    src/core/decoder.cpp
-    src/core/tokenizer.cpp
+    src/core/vad.cpp
 
     # Audio
     src/audio/audio_capture.cpp
@@ -80,8 +79,7 @@ set(HEADERS
     src/core/mel_spectrogram.h
     src/core/whisper_tokenizer.h
     src/core/audio_processor.h
-    src/core/decoder.h
-    src/core/tokenizer.h
+    src/core/vad.h
 
     src/audio/audio_capture.h
     src/audio/audio_decoder.h
