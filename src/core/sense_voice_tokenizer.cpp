@@ -56,11 +56,21 @@ QString SenseVoiceTokenizer::decode(const std::vector<int>& tokens) const {
 
         auto it = tokenToString_.find(token);
         if (it != tokenToString_.end()) {
-            result += decodeBPE(it->second);
+            QString decoded = decodeBPE(it->second);
+            // 过滤 SenseVoice 特殊标签: <|zh|>, <|speech|>, <|NEUTRAL|> 等
+            if (decoded.startsWith("<|") && decoded.endsWith("|>")) {
+                continue;
+            }
+            result += decoded;
         } else {
             result += QString("[T%1]").arg(token);
         }
     }
+
+    // 清理首尾空白
+    result = result.trimmed();
+    // 将多个连续空格合并为单个空格
+    result.replace(QRegularExpression("\\s+"), " ");
 
     return result;
 }
