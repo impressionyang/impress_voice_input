@@ -318,24 +318,24 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
         int64_t xShape[] = {1, numFrames, kLFROutputDim};
         auto memInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
-        int64_t xLengthVal = numFrames;
+        int32_t xLengthVal = numFrames;
         int64_t xLengthShape[] = {1};
 
         int langCode = languageToInt(lang);
-        int64_t langVal = langCode;
+        int32_t langVal = langCode;
         int64_t langShape[] = {1};
 
-        int64_t textNormVal = kTextNormWithITN;
+        int32_t textNormVal = kTextNormWithITN;
         int64_t textNormShape[] = {1};
 
         std::vector<Ort::Value> inputTensors;
         inputTensors.push_back(Ort::Value::CreateTensor<float>(
             memInfo, lfrFeatures.data(), lfrFeatures.size(), xShape, 3));
-        inputTensors.push_back(Ort::Value::CreateTensor<int64_t>(
+        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
             memInfo, &xLengthVal, 1, xLengthShape, 1));
-        inputTensors.push_back(Ort::Value::CreateTensor<int64_t>(
+        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
             memInfo, &langVal, 1, langShape, 1));
-        inputTensors.push_back(Ort::Value::CreateTensor<int64_t>(
+        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
             memInfo, &textNormVal, 1, textNormShape, 1));
 
         // 4. 运行推理
