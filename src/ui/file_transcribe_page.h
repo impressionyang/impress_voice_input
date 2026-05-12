@@ -27,6 +27,7 @@ struct TranscribeTask {
  * @brief 音频文件转写页面
  *
  * 支持单文件/批量转写，进度显示，结果导出。
+ * 解码和推理在后台线程执行，不阻塞 UI。
  */
 class FileTranscribePage : public QWidget {
     Q_OBJECT
@@ -40,11 +41,14 @@ private slots:
     void onStartTranscribe();
     void onStopTranscribe();
     void onExportResult();
+    void onTaskComplete(int index, const QString& text, bool success);
+    void onAllComplete();
 
 private:
     void setupUI();
     void updateUIState();
-    void processNextFile();
+    void startBatchTranscription();
+    void processFileAsync(int index);
 
     ConfigManager* configManager_;
     STTEngine* sttEngine_;
@@ -65,6 +69,7 @@ private:
     bool isTranscribing_ = false;
     QList<TranscribeTask> tasks_;
     int currentTaskIndex_ = -1;
+    int activeWorkers_ = 0; // 正在处理的任务数
 };
 
 } // namespace impress

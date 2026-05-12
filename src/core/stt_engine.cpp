@@ -39,6 +39,9 @@ struct STTEngine::Impl {
     std::vector<std::string> inputNames;
     std::vector<std::string> outputNames;
 
+    WhisperTokenizer tokenizer;
+    QString currentLanguage;
+
     bool loadInWorker(const QString& modelPath,
                       const QString& device,
                       int numThreads,
@@ -89,6 +92,16 @@ struct STTEngine::Impl {
             env = std::move(envPtr);
             sessionOptions = std::move(optionsPtr);
             session = std::move(sessionPtr);
+
+            // 尝试加载同目录下的 tokenizer 词表
+            QFileInfo modelInfo(modelPath);
+            QString vocabPath = modelInfo.absolutePath() + "/tokenizer.vocab";
+            if (QFile::exists(vocabPath)) {
+                tokenizer.loadVocabulary(vocabPath);
+                LOG_INFO(kTag, "Tokenizer 词表已加载");
+            } else {
+                LOG_WARNING(kTag, QString("未找到 tokenizer 词表: %1").arg(vocabPath));
+            }
 
             LOG_INFO(kTag, QString("模型加载成功: %1").arg(modelPath));
             return true;
@@ -171,6 +184,8 @@ void STTEngine::unloadModel() {
     impl_->session.reset();
     impl_->sessionOptions.reset();
     impl_->env.reset();
+    impl_->tokenizer = WhisperTokenizer();
+    impl_->currentLanguage.clear();
 #endif
     loaded_ = false;
     LOG_INFO(kTag, "模型已卸载");
@@ -221,7 +236,8 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
     Timer timer;
     RecognitionResult result;
 
-    (void)language;
+    QString lang = language.isEmpty() ? "zh" : language;
+    LOG_DEBUG(kTag, QString("推理语言: %1").arg(lang));
 
 #ifdef HAVE_ONNXRUNTIME
     if (!loaded_) {
@@ -319,13 +335,18 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
         // 4. 解码 token 为文本
         if (tokens.empty()) {
             result.text = "";
+        } else if (impl_->tokenizer.isLoaded()) {
+            // 使用 tokenizer 解码
+            result.text = impl_->tokenizer.decode(tokens);
         } else {
+            // 降级：直接输出 token ID（用于调试）
             QString decodedText;
             for (int token : tokens) {
                 if (token < 0 || token >= 50256) continue;
                 decodedText += QString("[T%1]").arg(token);
             }
             result.text = decodedText;
+            LOG_DEBUG(kTag, "Tokenizer 未加载，使用 token ID 输出");
         }
 
         result.isFinal = true;

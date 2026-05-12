@@ -19,6 +19,8 @@
 #include <QMessageBox>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QFuture>
+#include <QtConcurrent>
 
 static const char* const kTag = "FileTranscribePage";
 
@@ -147,75 +149,133 @@ void FileTranscribePage::onStartTranscribe() {
         return;
     }
 
-    if (!sttEngine_->loadModelSync(modelPath,
-        configManager_->get("stt.device").toString(),
-        configManager_->get("stt.num_threads").toInt()))
-    {
-        QMessageBox::critical(this, "错误", "模型加载失败");
-        return;
-    }
+    // 在后台线程中加载模型（不阻塞 UI）
+    statusLabel_->setText("正在加载模型...");
+    startBtn_->setEnabled(false);
+    activeWorkers_ = 1; // 标记正在加载模型
 
-    isTranscribing_ = true;
-    currentTaskIndex_ = 0;
-    progressBar_->setVisible(true);
-    updateUIState();
-    processNextFile();
+    (void)QtConcurrent::run([this, modelPath]() {
+        bool success = sttEngine_->loadModelSync(modelPath,
+            configManager_->get("stt.device").toString(),
+            configManager_->get("stt.num_threads").toInt());
+
+        QMetaObject::invokeMethod(this, [this, success]() {
+            activeWorkers_--;
+            if (!success) {
+                QMessageBox::critical(this, "错误", "模型加载失败");
+                statusLabel_->setText("模型加载失败");
+                startBtn_->setEnabled(true);
+                return;
+            }
+
+            isTranscribing_ = true;
+            currentTaskIndex_ = 0;
+            progressBar_->setVisible(true);
+            updateUIState();
+            statusLabel_->setText("开始批量转写...");
+
+            // 启动后台转写队列
+            startBatchTranscription();
+        }, Qt::QueuedConnection);
+    });
 }
 
 void FileTranscribePage::onStopTranscribe() {
     isTranscribing_ = false;
+    activeWorkers_ = 0;
     progressBar_->setVisible(false);
     statusLabel_->setText("已停止");
+    sttEngine_->unloadModel();
     updateUIState();
 }
 
-void FileTranscribePage::processNextFile() {
-    if (!isTranscribing_ || currentTaskIndex_ >= tasks_.size()) {
-        isTranscribing_ = false;
-        statusLabel_->setText("全部完成");
-        progressBar_->setVisible(false);
-        updateUIState();
+void FileTranscribePage::startBatchTranscription() {
+    // 使用单线程队列处理，避免内存占用过高
+    processFileAsync(currentTaskIndex_);
+}
+
+void FileTranscribePage::processFileAsync(int index) {
+    if (!isTranscribing_ || index >= tasks_.size()) {
         return;
     }
 
-    auto& task = tasks_[currentTaskIndex_];
+    auto& task = tasks_[index];
     task.status = "处理中";
-    statusLabel_->setText(QString("正在处理: %1").arg(QFileInfo(task.filePath).fileName()));
+    statusLabel_->setText(QString("正在处理: %1 (%2/%3)")
+        .arg(QFileInfo(task.filePath).fileName())
+        .arg(index + 1)
+        .arg(tasks_.size()));
 
-    // TODO: 在后台线程中执行解码和推理
-    // 当前为占位实现
-    if (audioDecoder_->decode(task.filePath)) {
-        const auto& samples = audioDecoder_->samples();
-        int sampleRate = audioDecoder_->sampleRate();
+    activeWorkers_++;
 
-        auto result = sttEngine_->infer(samples, sampleRate,
-            configManager_->get("stt.language").toString());
-        task.result = result.text;
-        task.status = "完成";
-        task.progress = 1.0;
+    // 在后台线程中执行解码和推理
+    (void)QtConcurrent::run([this, index, taskFile = task.filePath]() {
+        QString text;
+        bool success = false;
 
+        // 创建独立的解码器和引擎实例（避免线程冲突）
+        AudioDecoder decoder;
+        if (decoder.decode(taskFile)) {
+            const auto& samples = decoder.samples();
+            int sampleRate = decoder.sampleRate();
+
+            // 使用已加载的引擎进行推理（引擎是线程安全的）
+            auto result = sttEngine_->infer(samples, sampleRate,
+                configManager_->get("stt.language").toString());
+            text = result.text;
+            success = true;
+        }
+
+        // 回到主线程更新 UI
+        QMetaObject::invokeMethod(this, [this, index, text, success]() {
+            activeWorkers_--;
+            onTaskComplete(index, text, success);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void FileTranscribePage::onTaskComplete(int index, const QString& text, bool success) {
+    if (index >= tasks_.size()) return;
+
+    auto& task = tasks_[index];
+    task.result = text;
+    task.status = success ? "完成" : "失败";
+    task.progress = 1.0;
+
+    if (success) {
         resultText_->append(
             QString("=== %1 ===\n%2\n").arg(
-                QFileInfo(task.filePath).fileName(), result.text));
+                QFileInfo(task.filePath).fileName(), text));
     } else {
-        task.status = "失败";
+        resultText_->append(
+            QString("=== %1 === [失败]\n").arg(QFileInfo(task.filePath).fileName()));
     }
 
     // 更新列表项
-    auto* item = fileList_->item(currentTaskIndex_);
+    auto* item = fileList_->item(index);
     if (item) {
         item->setText(QString("%1 — %2")
             .arg(QFileInfo(task.filePath).fileName(), task.status));
     }
 
-    currentTaskIndex_++;
+    currentTaskIndex_ = index + 1;
     progressBar_->setValue(
         static_cast<int>(currentTaskIndex_ * 100.0 / tasks_.size()));
 
     // 继续下一个
-    if (isTranscribing_) {
-        processNextFile();
+    if (isTranscribing_ && currentTaskIndex_ < tasks_.size()) {
+        processFileAsync(currentTaskIndex_);
+    } else {
+        onAllComplete();
     }
+}
+
+void FileTranscribePage::onAllComplete() {
+    isTranscribing_ = false;
+    statusLabel_->setText("全部完成");
+    progressBar_->setVisible(false);
+    sttEngine_->unloadModel();
+    updateUIState();
 }
 
 void FileTranscribePage::onExportResult() {
