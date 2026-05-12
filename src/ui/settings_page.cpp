@@ -47,7 +47,7 @@ void SettingsPage::setupUI() {
     sttLayout->addRow("模型路径:", modelRow);
 
     modelTypeCombo_ = new QComboBox(this);
-    modelTypeCombo_->addItems({"whisper", "paraformer", "conformer"});
+    modelTypeCombo_->addItems({"sense_voice", "whisper", "paraformer", "conformer"});
     sttLayout->addRow("模型类型:", modelTypeCombo_);
 
     deviceCombo_ = new QComboBox(this);
@@ -58,6 +58,15 @@ void SettingsPage::setupUI() {
     threadSpin_->setRange(1, 32);
     threadSpin_->setValue(4);
     sttLayout->addRow("推理线程数:", threadSpin_);
+
+    auto* tokensRow = new QHBoxLayout();
+    tokensPathEdit_ = new QLineEdit(this);
+    tokensPathEdit_->setPlaceholderText("选择 tokens.txt 文件路径...");
+    tokensBrowseBtn_ = new QPushButton("浏览...", this);
+    connect(tokensBrowseBtn_, &QPushButton::clicked, this, &SettingsPage::onBrowseTokensPath);
+    tokensRow->addWidget(tokensPathEdit_);
+    tokensRow->addWidget(tokensBrowseBtn_);
+    sttLayout->addRow("词表路径:", tokensRow);
 
     sampleRateSpin_ = new QSpinBox(this);
     sampleRateSpin_->setRange(8000, 192000);
@@ -158,6 +167,7 @@ void SettingsPage::setupUI() {
 
 void SettingsPage::loadFromConfig() {
     modelPathEdit_->setText(configManager_->get("stt.model_path").toString());
+    tokensPathEdit_->setText(configManager_->get("stt.tokens_path").toString());
     modelTypeCombo_->setCurrentText(configManager_->get("stt.model_type").toString());
     deviceCombo_->setCurrentText(configManager_->get("stt.device").toString());
     threadSpin_->setValue(configManager_->get("stt.num_threads").toInt());
@@ -179,6 +189,7 @@ void SettingsPage::loadFromConfig() {
 
 void SettingsPage::saveToConfig() {
     configManager_->set("stt.model_path", modelPathEdit_->text());
+    configManager_->set("stt.tokens_path", tokensPathEdit_->text());
     configManager_->set("stt.model_type", modelTypeCombo_->currentText());
     configManager_->set("stt.device", deviceCombo_->currentText());
     configManager_->set("stt.num_threads", threadSpin_->value());
@@ -203,6 +214,14 @@ void SettingsPage::onBrowseModelPath() {
         "ONNX 模型 (*.onnx);;所有文件 (*.*)");
     if (!path.isEmpty()) {
         modelPathEdit_->setText(path);
+    }
+}
+
+void SettingsPage::onBrowseTokensPath() {
+    QString path = QFileDialog::getOpenFileName(this, "选择词表文件", "",
+        "词表文件 (tokens.txt);;所有文件 (*.*)");
+    if (!path.isEmpty()) {
+        tokensPathEdit_->setText(path);
     }
 }
 

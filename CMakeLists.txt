@@ -46,6 +46,9 @@ set(SOURCES
 
     # Core
     src/core/stt_engine.cpp
+    src/core/sense_voice_engine.cpp
+    src/core/sense_voice_features.cpp
+    src/core/sense_voice_tokenizer.cpp
     src/core/mel_spectrogram.cpp
     src/core/whisper_tokenizer.cpp
     src/core/audio_processor.cpp
@@ -76,6 +79,10 @@ set(HEADERS
     src/app/config_manager.h
 
     src/core/stt_engine.h
+    src/core/sense_voice_engine.h
+    src/core/sense_voice_features.h
+    src/core/sense_voice_tokenizer.h
+    src/core/sense_voice_cmvn.h
     src/core/mel_spectrogram.h
     src/core/whisper_tokenizer.h
     src/core/audio_processor.h

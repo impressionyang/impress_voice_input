@@ -13,13 +13,14 @@ class QSpinBox;
 namespace impress {
 
 class ConfigManager;
-class STTEngine;
+class SenseVoiceEngine;
 class AudioCapture;
 
 /**
  * @brief STT 测试页面
  *
  * 实时麦克风采集 + 流式识别。
+ * 使用 SenseVoice 模型进行推理。
  * 模型异步加载，不阻塞 UI。
  */
 class STTTestPage : public QWidget {
@@ -43,7 +44,7 @@ private:
     void processAudioChunk(const std::vector<float>& samples, int sampleRate);
 
     ConfigManager* configManager_;
-    STTEngine* sttEngine_;
+    SenseVoiceEngine* sttEngine_;
     AudioCapture* audioCapture_;
 
     // UI 控件

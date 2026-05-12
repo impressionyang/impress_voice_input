@@ -14,7 +14,7 @@ class QByteArray;
 namespace impress {
 
 class ConfigManager;
-class STTEngine;
+class SenseVoiceEngine;
 class AudioDecoder;
 
 struct TranscribeTask {
@@ -62,7 +62,7 @@ private:
     QString formatSRTTime(double seconds) const;
 
     ConfigManager* configManager_;
-    STTEngine* sttEngine_;
+    SenseVoiceEngine* sttEngine_;
     AudioDecoder* audioDecoder_;
 
     // UI 控件

@@ -1,5 +1,5 @@
 #include "stt_test_page.h"
-#include "core/stt_engine.h"
+#include "core/sense_voice_engine.h"
 #include "audio/audio_capture.h"
 #include "audio/audio_ring_buffer.h"
 #include "widgets/audio_waveform.h"
@@ -26,7 +26,7 @@ namespace impress {
 STTTestPage::STTTestPage(ConfigManager* configManager, QWidget* parent)
     : QWidget(parent)
     , configManager_(configManager)
-    , sttEngine_(new STTEngine(this))
+    , sttEngine_(new SenseVoiceEngine(this))
     , audioCapture_(new AudioCapture(this))
 {
     setupUI();
@@ -34,11 +34,11 @@ STTTestPage::STTTestPage(ConfigManager* configManager, QWidget* parent)
     // 信号连接
     connect(audioCapture_, &AudioCapture::audioDataReady,
             this, &STTTestPage::onAudioDataReady);
-    connect(sttEngine_, &STTEngine::modelLoaded,
+    connect(sttEngine_, &SenseVoiceEngine::modelLoaded,
             this, &STTTestPage::onModelLoaded);
-    connect(sttEngine_, &STTEngine::modelLoadError,
+    connect(sttEngine_, &SenseVoiceEngine::modelLoadError,
             this, &STTTestPage::onModelLoadError);
-    connect(sttEngine_, &STTEngine::modelUnloaded,
+    connect(sttEngine_, &SenseVoiceEngine::modelUnloaded,
             this, &STTTestPage::onModelUnloaded);
 }
 
@@ -133,6 +133,7 @@ void STTTestPage::onToggleRecording() {
             updateUIState();
 
             sttEngine_->loadModelAsync(modelPath,
+                configManager_->get("stt.tokens_path").toString(),
                 configManager_->get("stt.device").toString(),
                 configManager_->get("stt.num_threads").toInt());
 

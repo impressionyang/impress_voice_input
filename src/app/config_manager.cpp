@@ -66,7 +66,8 @@ void ConfigManager::loadDefaults() {
     config_ = QVariantMap{
         {"stt", QVariantMap{
             {"model_path", ""},
-            {"model_type", "whisper"},
+            {"model_type", "sense_voice"},
+            {"tokens_path", ""},
             {"device", "cpu"},
             {"num_threads", 4},
             {"sample_rate", 16000},

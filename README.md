@@ -131,7 +131,8 @@ ctest
 - [x] 语音活动检测 (VAD — 短时能量 + 过零率)
 - [x] 音频文件信息 (时长/采样率/声道数)
 - [x] 单元测试框架 (Catch2, 39 个测试用例)
-- [ ] 完整 Whisper 推理 (自回归解码 + 流式识别)
+- [x] 完整 Whisper 推理 (自回归解码 + 流式识别)
+- [x] SenseVoice 完整推理 (Fbank → LFR → CMVN → ONNX → CTC 解码)
 - [ ] 跨平台打包
 
 ## License

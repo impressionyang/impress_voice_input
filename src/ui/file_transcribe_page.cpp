@@ -1,5 +1,5 @@
 #include "file_transcribe_page.h"
-#include "core/stt_engine.h"
+#include "core/sense_voice_engine.h"
 #include "audio/audio_decoder.h"
 #include "app/config_manager.h"
 #include "utils/logger.h"
@@ -34,7 +34,7 @@ namespace impress {
 FileTranscribePage::FileTranscribePage(ConfigManager* configManager, QWidget* parent)
     : QWidget(parent)
     , configManager_(configManager)
-    , sttEngine_(new STTEngine(this))
+    , sttEngine_(new SenseVoiceEngine(this))
     , audioDecoder_(new AudioDecoder(this))
 {
     setupUI();
@@ -161,6 +161,7 @@ void FileTranscribePage::onStartTranscribe() {
 
     (void)QtConcurrent::run([this, modelPath]() {
         bool success = sttEngine_->loadModelSync(modelPath,
+            configManager_->get("stt.tokens_path").toString(),
             configManager_->get("stt.device").toString(),
             configManager_->get("stt.num_threads").toInt());
 

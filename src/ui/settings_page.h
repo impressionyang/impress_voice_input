@@ -29,6 +29,7 @@ public:
 
 private slots:
     void onBrowseModelPath();
+    void onBrowseTokensPath();
     void onSaveConfig();
     void onResetConfig();
 
@@ -42,6 +43,8 @@ private:
     // STT 设置
     QLineEdit* modelPathEdit_;
     QPushButton* browseBtn_;
+    QLineEdit* tokensPathEdit_;
+    QPushButton* tokensBrowseBtn_;
     QComboBox* modelTypeCombo_;
     QComboBox* deviceCombo_;
     QSpinBox* threadSpin_;
