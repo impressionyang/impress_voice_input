@@ -12,6 +12,9 @@
 #include <QAction>
 #include <QFile>
 #include <QMessageBox>
+#include <QStatusBar>
+#include <QLabel>
+#include <QFileInfo>
 
 static const char* const kTag = "MainWindow";
 
@@ -28,6 +31,7 @@ MainWindow::MainWindow(ConfigManager* configManager,
 
     setupUI(sttEngine);
     setupMenuBar();
+    setupStatusBar(sttEngine);
     loadStyleSheet();
 
     // 初始化语音输入服务（共享全局引擎）
@@ -71,6 +75,29 @@ void MainWindow::setupUI(SenseVoiceEngine* sttEngine) {
     setCentralWidget(tabWidget_);
 }
 
+void MainWindow::setupStatusBar(SenseVoiceEngine* sttEngine) {
+    sttEngine_ = sttEngine;
+
+    auto* bar = statusBar();
+    bar->setSizeGripEnabled(false);
+
+    modelStatusLabel_ = new QLabel(this);
+    modelStatusLabel_->setStyleSheet(
+        "QLabel { padding: 2px 8px; font-size: 13px; }");
+    bar->addPermanentWidget(modelStatusLabel_);
+
+    // 连接全局引擎信号
+    connect(sttEngine_, &SenseVoiceEngine::modelLoaded,
+            this, &MainWindow::updateModelStatus);
+    connect(sttEngine_, &SenseVoiceEngine::modelLoadError,
+            this, &MainWindow::updateModelStatus);
+    connect(sttEngine_, &SenseVoiceEngine::modelUnloaded,
+            this, &MainWindow::updateModelStatus);
+
+    // 初始化显示
+    updateModelStatus();
+}
+
 void MainWindow::setupMenuBar() {
     // 文件菜单
     auto* fileMenu = menuBar()->addMenu("文件");
@@ -112,8 +139,34 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     QMainWindow::closeEvent(event);
 }
 
+void MainWindow::updateModelStatus() {
+    if (!sttEngine_ || !modelStatusLabel_) return;
+
+    QString modelPath = configManager_->get("stt.model_path").toString();
+    QString modelName = modelPath.isEmpty() ? QString() : QFileInfo(modelPath).fileName();
+
+    if (sttEngine_->isLoaded()) {
+        QString statusText = modelName.isEmpty() ? "模型已就绪" : QString("模型已就绪: %1").arg(modelName);
+        modelStatusLabel_->setText(statusText);
+        modelStatusLabel_->setStyleSheet(
+            "QLabel { padding: 2px 8px; font-size: 13px; color: #27ae60; font-weight: bold; }");
+    } else if (modelPath.isEmpty()) {
+        modelStatusLabel_->setText("⚠️ 模型路径未设置");
+        modelStatusLabel_->setStyleSheet(
+            "QLabel { padding: 2px 8px; font-size: 13px; color: #e74c3c; }");
+    } else {
+        modelStatusLabel_->setText(
+            QString("⚠️ 模型加载失败: %1").arg(modelName));
+        modelStatusLabel_->setStyleSheet(
+            "QLabel { padding: 2px 8px; font-size: 13px; color: #e67e22; }");
+    }
+}
+
 void MainWindow::onVoiceInputConfigChanged() {
     if (!voiceInputService_) return;
+
+    // 更新模型状态显示
+    updateModelStatus();
 
     bool enabled = configManager_->get("stt.capslock_voice_enabled").toBool();
     if (enabled && !voiceInputService_->isRunning()) {

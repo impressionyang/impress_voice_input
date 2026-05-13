@@ -26,12 +26,18 @@ public:
     /** @brief 获取全局 STT 引擎（共享实例） */
     SenseVoiceEngine* sttEngine() const;
 
+    /** @brief 获取当前模型路径 */
+    QString modelPath() const { return modelPath_; }
+
     /** @brief 获取全局 STT 引擎加载状态 */
     bool isModelLoaded() const;
 
 signals:
-    /** @brief 模型加载完成 */
-    void modelLoaded();
+    /** @brief 模型加载中（带路径） */
+    void modelLoading(const QString& modelPath);
+
+    /** @brief 模型加载完成（带路径） */
+    void modelLoaded(const QString& modelPath);
 
     /** @brief 模型加载失败 */
     void modelLoadError(const QString& error);
@@ -41,6 +47,7 @@ private:
 
     std::unique_ptr<ConfigManager> configManager_;
     SenseVoiceEngine* sttEngine_ = nullptr;
+    QString modelPath_;
     bool modelLoaded_ = false;
 };
 

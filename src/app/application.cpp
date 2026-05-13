@@ -20,8 +20,9 @@ Application::Application(int& argc, char** argv)
     sttEngine_ = new SenseVoiceEngine(this);
     connect(sttEngine_, &SenseVoiceEngine::modelLoaded, this, [this](const QString& path) {
         modelLoaded_ = true;
+        modelPath_ = path;
         LOG_INFO(kTag, QString("全局模型已加载: %1").arg(path));
-        emit modelLoaded();
+        emit modelLoaded(path);
     });
     connect(sttEngine_, &SenseVoiceEngine::modelLoadError, this, [this](const QString&, const QString& err) {
         modelLoaded_ = false;
@@ -54,8 +55,11 @@ void Application::loadGlobalModel() {
     QString modelPath = configManager_->get("stt.model_path").toString();
     if (modelPath.isEmpty()) {
         LOG_WARNING(kTag, "模型路径为空，请在配置中设置后重启");
+        emit modelLoadError("模型路径未设置");
         return;
     }
+
+    modelPath_ = modelPath;
 
     QString tokensPath = configManager_->get("stt.tokens_path").toString();
     QString device = configManager_->get("stt.device").toString();
@@ -65,6 +69,7 @@ void Application::loadGlobalModel() {
     sttEngine_->setDebugSaveAudio(debugSave);
 
     LOG_INFO(kTag, QString("正在异步加载全局模型: %1").arg(modelPath));
+    emit modelLoading(modelPath);
     sttEngine_->loadModelAsync(modelPath, tokensPath, device, numThreads);
 }
 

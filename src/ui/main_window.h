@@ -4,6 +4,8 @@
 #include <QTabWidget>
 #include <memory>
 
+class QLabel;
+
 namespace impress {
 
 class ConfigManager;
@@ -17,6 +19,7 @@ class VoiceInputService;
  * @brief 主窗口
  *
  * 使用 Tab 页导航管理三个功能页面，共享全局 STT 引擎。
+ * 状态栏显示模型名称和加载状态。
  */
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -32,15 +35,19 @@ protected:
 private:
     void setupUI(SenseVoiceEngine* sttEngine);
     void setupMenuBar();
+    void setupStatusBar(SenseVoiceEngine* sttEngine);
     void loadStyleSheet();
     void onVoiceInputConfigChanged();
+    void updateModelStatus();
 
     ConfigManager* configManager_;
+    SenseVoiceEngine* sttEngine_;
     VoiceInputService* voiceInputService_;
     STTTestPage* sttPage_;
     FileTranscribePage* transcribePage_;
     SettingsPage* settingsPage_;
     QTabWidget* tabWidget_;
+    QLabel* modelStatusLabel_;
 };
 
 } // namespace impress
