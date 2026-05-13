@@ -28,7 +28,15 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Qt 6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent Network DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent Network)
+
+# Windows 不需要 D-Bus，Linux/macOS 按需加载
+if(WIN32)
+    find_package(Qt6 REQUIRED COMPONENTS Gui)
+else()
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+endif()
+
 qt_standard_project_setup()
 
 # ONNX Runtime
@@ -44,7 +52,7 @@ set(SOURCES
     src/app/application.cpp
     src/app/config_manager.cpp
 
-    # Core
+    # Core (平台无关)
     src/core/stt_engine.cpp
     src/core/sense_voice_engine.cpp
     src/core/sense_voice_features.cpp
@@ -53,8 +61,6 @@ set(SOURCES
     src/core/whisper_tokenizer.cpp
     src/core/audio_processor.cpp
     src/core/vad.cpp
-    src/core/caps_lock_voice_hotkey.cpp
-    src/core/wayland_text_injector.cpp
     src/core/voice_input_service.cpp
 
     # Audio
@@ -90,8 +96,6 @@ set(HEADERS
     src/core/whisper_tokenizer.h
     src/core/audio_processor.h
     src/core/vad.h
-    src/core/caps_lock_voice_hotkey.h
-    src/core/wayland_text_injector.h
     src/core/voice_input_service.h
 
     src/audio/audio_capture.h
@@ -112,8 +116,24 @@ set(HEADERS
 )
 
 # ============================================================================
-# 可执行文件
+# 平台特定源文件
 # ============================================================================
+if(WIN32)
+    # Windows 实现（RegisterHotKey + SendInput）
+    list(APPEND SOURCES src/core/win_hotkey.cpp src/core/win_text_injector.cpp)
+    list(APPEND HEADERS src/core/win_hotkey.h src/core/win_text_injector.h)
+    add_compile_definitions(PLATFORM_WINDOWS)
+elseif(APPLE)
+    # macOS 实现（待完善：Carbon EventManager / CGEvent）
+    list(APPEND SOURCES src/core/mac_hotkey.cpp src/core/mac_text_injector.cpp)
+    list(APPEND HEADERS src/core/mac_hotkey.h src/core/mac_text_injector.h)
+    add_compile_definitions(PLATFORM_MACOS)
+else()
+    # Linux 实现（D-Bus Portal + XTest）
+    list(APPEND SOURCES src/core/caps_lock_voice_hotkey.cpp src/core/wayland_text_injector.cpp)
+    list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
+    add_compile_definitions(PLATFORM_LINUX)
+endif()
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -130,10 +150,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     Qt6::Concurrent
     Qt6::Network
-    Qt6::DBus
+    $<$<BOOL:${WIN32}>:Qt6::Gui>
+    $<$<NOT:$<BOOL:${WIN32}>>:Qt6::DBus>
     ${ONNXRUNTIME_LIBRARIES}
     ${PORTAUDIO_LIBRARIES}
-    pthread
+    $<$<NOT:$<BOOL:${WIN32}>>:pthread>
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE

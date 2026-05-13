@@ -83,8 +83,8 @@ void SettingsPage::setupUI() {
     streamingCheck_->setChecked(true);
     sttLayout->addRow("流式识别:", streamingCheck_);
 
-    debugSaveAudioCheck_ = new QCheckBox("保存调试音频到 /tmp/impress_audio_debug/", this);
-    debugSaveAudioCheck_->setToolTip("开启后，每次识别会将原始音频保存为 WAV 文件，用于调试音频质量问题");
+    debugSaveAudioCheck_ = new QCheckBox("保存调试音频到临时文件夹", this);
+    debugSaveAudioCheck_->setToolTip("开启后，每次识别会将原始音频保存为 WAV 文件到系统临时目录，用于调试音频质量问题");
     sttLayout->addRow("调试录音:", debugSaveAudioCheck_);
 
     capslockVoiceCheck_ = new QCheckBox("启用 CapsLock 长按语音输入", this);

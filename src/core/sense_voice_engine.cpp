@@ -346,7 +346,7 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
 
         // 调试模式：保存原始音频到 WAV 文件
         if (debugSaveAudio_ && !samples.empty()) {
-            QString debugDir = "/tmp/impress_audio_debug";
+            QString debugDir = QDir::tempPath() + "/impress_audio_debug";
             QDir dir;
             if (!dir.exists(debugDir)) {
                 dir.mkpath(debugDir);

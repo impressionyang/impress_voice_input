@@ -1,10 +1,20 @@
 #include "voice_input_service.h"
 #include "audio/audio_capture.h"
 #include "sense_voice_engine.h"
-#include "caps_lock_voice_hotkey.h"
-#include "wayland_text_injector.h"
 #include "app/config_manager.h"
 #include "utils/logger.h"
+
+// 平台特定的快捷键和文本注入
+#ifdef PLATFORM_WINDOWS
+#include "win_hotkey.h"
+#include "win_text_injector.h"
+#elif defined(PLATFORM_MACOS)
+#include "mac_hotkey.h"
+#include "mac_text_injector.h"
+#else
+#include "caps_lock_voice_hotkey.h"
+#include "wayland_text_injector.h"
+#endif
 
 #include <QThread>
 #include <QTimer>
