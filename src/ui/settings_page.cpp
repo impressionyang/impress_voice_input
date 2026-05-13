@@ -1,5 +1,6 @@
 #include "settings_page.h"
 #include "app/config_manager.h"
+#include "audio/audio_capture.h"
 #include "widgets/hotkey_recorder.h"
 #include "utils/logger.h"
 
@@ -114,6 +115,11 @@ void SettingsPage::setupUI() {
     auto* audioGroup = new QGroupBox("音频设置", this);
     auto* audioLayout = new QFormLayout(audioGroup);
 
+    // 音频输入设备选择器
+    audioDeviceCombo_ = new QComboBox(this);
+    populateAudioDevices();
+    audioLayout->addRow("输入设备:", audioDeviceCombo_);
+
     bufferSizeSpin_ = new QSpinBox(this);
     bufferSizeSpin_->setRange(10, 100);
     bufferSizeSpin_->setValue(20);
@@ -197,6 +203,10 @@ void SettingsPage::loadFromConfig() {
     chunkDurationSpin_->setValue(configManager_->get("audio.chunk_duration_ms").toInt());
     paddingSpin_->setValue(configManager_->get("audio.padding_ms").toInt());
 
+    // 恢复音频设备选择
+    int savedDevice = configManager_->get("audio.input_device").toInt();
+    selectAudioDevice(savedDevice);
+
     themeCombo_->setCurrentText(configManager_->get("ui.theme").toString());
     fontSizeSpin_->setValue(configManager_->get("ui.font_size").toInt());
     showWaveformCheck_->setChecked(configManager_->get("ui.show_waveform").toBool());
@@ -218,6 +228,7 @@ void SettingsPage::saveToConfig() {
     batch["stt.beam_size"] = beamSizeSpin_->value();
     batch["stt.temperature"] = temperatureSpin_->value();
     batch["shortcuts.voice_hotkey"] = hotkeyRecorder_->hotkeyText();
+    batch["audio.input_device"] = getSelectedAudioDeviceIndex();
     batch["audio.buffer_size_ms"] = bufferSizeSpin_->value();
     batch["audio.chunk_duration_ms"] = chunkDurationSpin_->value();
     batch["audio.padding_ms"] = paddingSpin_->value();
@@ -235,6 +246,43 @@ void SettingsPage::onBrowseModelPath() {
     if (!path.isEmpty()) {
         modelPathEdit_->setText(path);
     }
+}
+
+void SettingsPage::populateAudioDevices() {
+    audioDeviceCombo_->clear();
+    audioDeviceCombo_->addItem("默认设备", -1);
+
+#ifdef HAVE_PORTAUDIO
+    // 直接使用 PortAudio 枚举所有输入设备
+    QStringList devices = AudioCapture::getDeviceList();
+    // 跳过第一个 "默认设备"（已手动添加）
+    for (int i = 1; i < devices.size(); i++) {
+        audioDeviceCombo_->addItem(devices[i], i - 1); // display text, PortAudio index
+    }
+#else
+    audioDeviceCombo_->addItem("PortAudio 未启用", -1);
+#endif
+}
+
+void SettingsPage::selectAudioDevice(int deviceIndex) {
+    // deviceIndex == -1 表示默认设备，对应 combo 的第一项（index 0）
+    if (deviceIndex < 0) {
+        audioDeviceCombo_->setCurrentIndex(0);
+    } else {
+        // 在 combo 中查找 data == deviceIndex 的项
+        for (int i = 0; i < audioDeviceCombo_->count(); i++) {
+            if (audioDeviceCombo_->itemData(i).toInt() == deviceIndex) {
+                audioDeviceCombo_->setCurrentIndex(i);
+                return;
+            }
+        }
+        // 如果没找到，使用默认设备
+        audioDeviceCombo_->setCurrentIndex(0);
+    }
+}
+
+int SettingsPage::getSelectedAudioDeviceIndex() const {
+    return audioDeviceCombo_->currentData().toInt();
 }
 
 void SettingsPage::onBrowseTokensPath() {

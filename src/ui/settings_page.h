@@ -38,6 +38,9 @@ private:
     void setupUI();
     void loadFromConfig();
     void saveToConfig();
+    void populateAudioDevices();
+    void selectAudioDevice(int deviceIndex);
+    int getSelectedAudioDeviceIndex() const;
 
     ConfigManager* configManager_;
 
@@ -58,6 +61,7 @@ private:
     QDoubleSpinBox* temperatureSpin_;
 
     // 音频设置
+    QComboBox* audioDeviceCombo_;
     QSpinBox* bufferSizeSpin_;
     QSpinBox* chunkDurationSpin_;
     QSpinBox* paddingSpin_;

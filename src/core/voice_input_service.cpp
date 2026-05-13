@@ -126,8 +126,10 @@ void VoiceInputService::onHotkeyActivated() {
     longPressTimer_->start(longPressThreshold_);
 
     // 开始音频采集（后台预采集）
-    int deviceIndex = -1; // 默认设备
-    impl_->audioCapture->start(deviceIndex, 16000, 20);
+    int deviceIndex = configManager_->get("audio.input_device").toInt();
+    int sampleRate = configManager_->get("stt.sample_rate").toInt();
+    int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
+    impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
 
     emit statusChanged("等待长按确认...");
 }

@@ -3,6 +3,7 @@
 
 #ifdef HAVE_PORTAUDIO
 #include <portaudio.h>
+#include <cmath>
 #endif
 
 static const char* const kTag = "AudioCapture";
@@ -41,6 +42,10 @@ struct CallbackContext {
     float buffer[kMaxBufferSize];
 #endif
     int sampleRate = 16000;
+    // 音频电平诊断
+    float peakLevel = 0.0f;
+    double sumSquares = 0.0;
+    int sampleCount = 0;
 };
 
 struct AudioCapture::Impl {
@@ -62,10 +67,21 @@ static int paCallback(const void* input, void* /*output*/,
     unsigned long count = frameCount;
     if (count > kMaxBufferSize) count = kMaxBufferSize;
 
-    // 拷贝到预分配缓冲区
+    // 拷贝到预分配缓冲区 + 计算音频电平
+    float peak = 0.0f;
+    double ss = 0.0;
     for (unsigned long i = 0; i < count; i++) {
-        ctx->buffer[i] = samples[i];
+        float s = samples[i];
+        ctx->buffer[i] = s;
+        float absS = std::fabs(s);
+        if (absS > peak) peak = absS;
+        ss += s * s;
     }
+
+    // 更新诊断数据
+    if (peak > ctx->peakLevel) ctx->peakLevel = peak;
+    ctx->sumSquares += ss;
+    ctx->sampleCount += count;
 
     // 发射信号（Qt 使用 QueuedConnection，线程安全）
     std::vector<float> data(ctx->buffer, ctx->buffer + count);
@@ -101,12 +117,24 @@ QStringList AudioCapture::getDeviceList() {
     for (int i = 0; i < count; ++i) {
         const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
         if (info && info->maxInputChannels > 0) {
-            devices << QString("%1 (CH:%2, SR:%3)").arg(
-                info->name).arg(info->maxInputChannels).arg(info->defaultSampleRate);
+            const PaHostApiInfo* hostApi = Pa_GetHostApiInfo(info->hostApi);
+            QString hostApiName = hostApi ? hostApi->name : "未知";
+            devices << QString("[%1] %2 (CH:%3, SR:%4, %5)")
+                .arg(i).arg(info->name).arg(info->maxInputChannels)
+                .arg(info->defaultSampleRate).arg(hostApiName);
         }
     }
 #endif
     return devices;
+}
+
+int AudioCapture::getDefaultDeviceIndex() {
+#ifdef HAVE_PORTAUDIO
+    if (!ensurePaInitialized()) return -1;
+    return Pa_GetDefaultInputDevice();
+#else
+    return -1;
+#endif
 }
 
 bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
@@ -121,9 +149,21 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         return false;
     }
 
+    // 枚举所有 Host API 用于诊断
+    LOG_DEBUG(kTag, QString("Host API 数量: %1").arg(Pa_GetHostApiCount()));
+    for (int i = 0; i < Pa_GetHostApiCount(); i++) {
+        const PaHostApiInfo* api = Pa_GetHostApiInfo(i);
+        if (api) {
+            LOG_DEBUG(kTag, QString("  Host API #%1: %2 (设备数: %3)")
+                .arg(i).arg(api->name).arg(api->deviceCount));
+        }
+    }
+
+    // 选择设备
     int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
     if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
-        LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)").arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
+        LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)")
+            .arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
         return false;
     }
 
@@ -131,6 +171,25 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
     if (!devInfo || devInfo->maxInputChannels <= 0) {
         LOG_ERROR(kTag, "所选设备不是输入设备");
         return false;
+    }
+
+    const PaHostApiInfo* hostApi = Pa_GetHostApiInfo(devInfo->hostApi);
+    LOG_INFO(kTag, QString("=== 音频设备诊断 ==="));
+    LOG_INFO(kTag, QString("  设备 #%1: %2").arg(devIdx).arg(devInfo->name));
+    LOG_INFO(kTag, QString("  Host API: %1").arg(hostApi ? hostApi->name : "未知"));
+    LOG_INFO(kTag, QString("  最大输入通道: %1").arg(devInfo->maxInputChannels));
+    LOG_INFO(kTag, QString("  设备默认采样率: %1 Hz").arg(devInfo->defaultSampleRate, 0, 'f', 0));
+    LOG_INFO(kTag, QString("  请求采样率: %1 Hz").arg(sampleRate));
+    LOG_INFO(kTag, QString("  采样格式: paFloat32 | paNonInterleaved"));
+    LOG_INFO(kTag, QString("  请求通道数: 1 (mono)"));
+    LOG_INFO(kTag, QString("  缓冲区: %1ms (%2 帧)").arg(bufferSizeMs)
+        .arg(sampleRate * bufferSizeMs / 1000));
+
+    // 检查是否可能选错设备（名称包含 monitor 的通常是回环设备）
+    QString devName = QString(devInfo->name).toLower();
+    if (devName.contains("monitor") || devName.contains("output")) {
+        LOG_WARNING(kTag, "⚠️ 当前设备名称包含 'monitor' 或 'output'，"
+            "这可能是扬声器回环设备而非麦克风！如果录制的是噪音，请在设置中选择正确的麦克风设备。");
     }
 
     PaStreamParameters inputParams{};
@@ -161,6 +220,11 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         return false;
     }
 
+    // 重置诊断计数器
+    impl_->ctx.peakLevel = 0.0f;
+    impl_->ctx.sumSquares = 0.0;
+    impl_->ctx.sampleCount = 0;
+
     impl_->ctx.sampleRate = sampleRate;
     running_ = true;
     emit runningChanged(true);
@@ -178,6 +242,24 @@ void AudioCapture::stop() {
     if (!running_) return;
 
 #ifdef HAVE_PORTAUDIO
+    // 输出音频电平诊断信息
+    if (impl_->ctx.sampleCount > 0) {
+        double rms = std::sqrt(impl_->ctx.sumSquares / impl_->ctx.sampleCount);
+        LOG_INFO(kTag, QString("=== 音频电平诊断 ==="));
+        LOG_INFO(kTag, QString("  总样本数: %1").arg(impl_->ctx.sampleCount));
+        LOG_INFO(kTag, QString("  RMS 电平: %1").arg(rms, 0, 'f', 6));
+        LOG_INFO(kTag, QString("  峰值: %1").arg(impl_->ctx.peakLevel, 0, 'f', 4));
+        if (rms < 0.001) {
+            LOG_WARNING(kTag, "⚠️ 音频信号过弱，可能是静音或设备未正确采集");
+        } else if (rms > 0.5) {
+            LOG_WARNING(kTag, "⚠️ 音频信号过强，可能存在削波");
+        } else if (impl_->ctx.peakLevel > 0.9f) {
+            LOG_INFO(kTag, "  信号幅度正常");
+        } else {
+            LOG_WARNING(kTag, "⚠️ 信号幅度偏低，请检查设备选择");
+        }
+    }
+
     if (impl_->ctx.stream) {
         Pa_StopStream(impl_->ctx.stream);
         Pa_CloseStream(impl_->ctx.stream);

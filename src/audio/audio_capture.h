@@ -23,6 +23,9 @@ public:
     /** @brief 获取可用输入设备列表 */
     static QStringList getDeviceList();
 
+    /** @brief 获取默认输入设备索引 (-1 表示无默认设备) */
+    static int getDefaultDeviceIndex();
+
     /** @brief 开始采集 */
     bool start(int deviceIndex = -1,
                int sampleRate = 16000,
