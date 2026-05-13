@@ -29,9 +29,6 @@ Application::Application(int& argc, char** argv)
         LOG_ERROR(kTag, QString("全局模型加载失败: %1").arg(err));
         emit modelLoadError(err);
     });
-
-    // 异步加载全局模型
-    loadGlobalModel();
 }
 
 Application::~Application() {

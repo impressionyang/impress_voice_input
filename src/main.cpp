@@ -56,6 +56,9 @@ int main(int argc, char* argv[])
         configManager->set("stt.model_path", modelPath);
     }
 
+    // 配置加载完成后，启动全局模型加载
+    app.loadGlobalModel();
+
     // 创建并显示主窗口（传入全局引擎）
     impress::MainWindow mainWindow(configManager, app.sttEngine());
     mainWindow.show();

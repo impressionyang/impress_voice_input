@@ -32,6 +32,9 @@ public:
     /** @brief 获取全局 STT 引擎加载状态 */
     bool isModelLoaded() const;
 
+    /** @brief 加载全局模型（在配置加载后手动调用） */
+    void loadGlobalModel();
+
 signals:
     /** @brief 模型加载中（带路径） */
     void modelLoading(const QString& modelPath);
@@ -43,8 +46,6 @@ signals:
     void modelLoadError(const QString& error);
 
 private:
-    void loadGlobalModel();
-
     std::unique_ptr<ConfigManager> configManager_;
     SenseVoiceEngine* sttEngine_ = nullptr;
     QString modelPath_;
