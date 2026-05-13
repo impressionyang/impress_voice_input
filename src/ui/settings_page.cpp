@@ -83,6 +83,14 @@ void SettingsPage::setupUI() {
     streamingCheck_->setChecked(true);
     sttLayout->addRow("流式识别:", streamingCheck_);
 
+    debugSaveAudioCheck_ = new QCheckBox("保存调试音频到 /tmp/impress_audio_debug/", this);
+    debugSaveAudioCheck_->setToolTip("开启后，每次识别会将原始音频保存为 WAV 文件，用于调试音频质量问题");
+    sttLayout->addRow("调试录音:", debugSaveAudioCheck_);
+
+    capslockVoiceCheck_ = new QCheckBox("启用 CapsLock 长按语音输入", this);
+    capslockVoiceCheck_->setToolTip("长按 CapsLock 键 1 秒后触发录音，松开后自动转写并输入到光标位置");
+    sttLayout->addRow("快捷语音:", capslockVoiceCheck_);
+
     beamSizeSpin_ = new QSpinBox(this);
     beamSizeSpin_->setRange(1, 20);
     beamSizeSpin_->setValue(5);
@@ -174,6 +182,8 @@ void SettingsPage::loadFromConfig() {
     sampleRateSpin_->setValue(configManager_->get("stt.sample_rate").toInt());
     languageCombo_->setCurrentText(configManager_->get("stt.language").toString());
     streamingCheck_->setChecked(configManager_->get("stt.streaming").toBool());
+    debugSaveAudioCheck_->setChecked(configManager_->get("stt.debug_save_audio").toBool());
+    capslockVoiceCheck_->setChecked(configManager_->get("stt.capslock_voice_enabled").toBool());
     beamSizeSpin_->setValue(configManager_->get("stt.beam_size").toInt());
     temperatureSpin_->setValue(configManager_->get("stt.temperature").toDouble());
 
@@ -196,6 +206,8 @@ void SettingsPage::saveToConfig() {
     configManager_->set("stt.sample_rate", sampleRateSpin_->value());
     configManager_->set("stt.language", languageCombo_->currentText());
     configManager_->set("stt.streaming", streamingCheck_->isChecked());
+    configManager_->set("stt.debug_save_audio", debugSaveAudioCheck_->isChecked());
+    configManager_->set("stt.capslock_voice_enabled", capslockVoiceCheck_->isChecked());
     configManager_->set("stt.beam_size", beamSizeSpin_->value());
     configManager_->set("stt.temperature", temperatureSpin_->value());
 

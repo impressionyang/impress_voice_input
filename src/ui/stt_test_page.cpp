@@ -135,6 +135,10 @@ void STTTestPage::onToggleRecording() {
             return;
         }
 
+        // 从配置同步调试开关到引擎
+        sttEngine_->setDebugSaveAudio(
+            configManager_->get("stt.debug_save_audio").toBool());
+
         // 异步加载模型
         if (!sttEngine_->isLoaded() ||
             currentModelPath_ != modelPath) {

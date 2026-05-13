@@ -51,6 +51,8 @@ private:
     QSpinBox* sampleRateSpin_;
     QComboBox* languageCombo_;
     QCheckBox* streamingCheck_;
+    QCheckBox* debugSaveAudioCheck_;
+    QCheckBox* capslockVoiceCheck_;
     QSpinBox* beamSizeSpin_;
     QDoubleSpinBox* temperatureSpin_;
 

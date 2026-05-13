@@ -174,6 +174,10 @@ void FileTranscribePage::onStartTranscribe() {
                 return;
             }
 
+            // 从配置同步调试开关到引擎
+            sttEngine_->setDebugSaveAudio(
+                configManager_->get("stt.debug_save_audio").toBool());
+
             isTranscribing_ = true;
             currentTaskIndex_ = 0;
             progressBar_->setVisible(true);

@@ -10,6 +10,7 @@ class ConfigManager;
 class STTTestPage;
 class FileTranscribePage;
 class SettingsPage;
+class VoiceInputService;
 
 /**
  * @brief 主窗口
@@ -29,8 +30,10 @@ private:
     void setupUI();
     void setupMenuBar();
     void loadStyleSheet();
+    void onVoiceInputConfigChanged();
 
     ConfigManager* configManager_;
+    VoiceInputService* voiceInputService_;
     STTTestPage* sttPage_;
     FileTranscribePage* transcribePage_;
     SettingsPage* settingsPage_;

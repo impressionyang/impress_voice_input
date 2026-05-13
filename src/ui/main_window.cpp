@@ -2,6 +2,7 @@
 #include "stt_test_page.h"
 #include "file_transcribe_page.h"
 #include "settings_page.h"
+#include "core/voice_input_service.h"
 #include "app/config_manager.h"
 #include "utils/logger.h"
 
@@ -25,6 +26,28 @@ MainWindow::MainWindow(ConfigManager* configManager, QWidget* parent)
     setupUI();
     setupMenuBar();
     loadStyleSheet();
+
+    // 初始化语音输入服务
+    voiceInputService_ = new VoiceInputService(configManager_, this);
+    connect(voiceInputService_, &VoiceInputService::statusChanged,
+            this, [this](const QString& status) {
+                LOG_DEBUG(kTag, QString("语音输入状态: %1").arg(status));
+            });
+    connect(voiceInputService_, &VoiceInputService::error,
+            this, [this](const QString& err) {
+                LOG_ERROR(kTag, err);
+            });
+    connect(voiceInputService_, &VoiceInputService::recognitionResult,
+            this, [this](const QString& text) {
+                LOG_INFO(kTag, QString("语音识别结果: %1").arg(text));
+            });
+
+    // 监听配置变化，动态启停语音输入服务
+    connect(configManager_, &ConfigManager::configChanged,
+            this, &MainWindow::onVoiceInputConfigChanged);
+
+    // 启动时检查配置
+    onVoiceInputConfigChanged();
 
     LOG_INFO(kTag, "主窗口已创建");
 }
@@ -79,8 +102,24 @@ void MainWindow::loadStyleSheet() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    if (voiceInputService_) {
+        voiceInputService_->stop();
+    }
     LOG_INFO(kTag, "主窗口关闭");
     QMainWindow::closeEvent(event);
+}
+
+void MainWindow::onVoiceInputConfigChanged() {
+    if (!voiceInputService_) return;
+
+    bool enabled = configManager_->get("stt.capslock_voice_enabled").toBool();
+    if (enabled && !voiceInputService_->isRunning()) {
+        voiceInputService_->start();
+        LOG_INFO(kTag, "CapsLock 语音输入已启用");
+    } else if (!enabled && voiceInputService_->isRunning()) {
+        voiceInputService_->stop();
+        LOG_INFO(kTag, "CapsLock 语音输入已关闭");
+    }
 }
 
 } // namespace impress
