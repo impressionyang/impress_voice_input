@@ -48,6 +48,9 @@ public:
                             int sampleRate,
                             const QString& language = QString());
 
+    /** @brief 设置调试模式：开启后每次推理保存音频到 WAV */
+    void setDebugSaveAudio(bool enable);
+
 signals:
     void modelLoaded(const QString& modelPath);
     void modelLoadError(const QString& modelPath, const QString& error);
@@ -58,6 +61,7 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     bool loaded_ = false;
+    bool debugSaveAudio_ = false;
 };
 
 } // namespace impress
