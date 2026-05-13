@@ -36,7 +36,9 @@ struct TranscribeTask {
 class FileTranscribePage : public QWidget {
     Q_OBJECT
 public:
-    explicit FileTranscribePage(ConfigManager* configManager, QWidget* parent = nullptr);
+    explicit FileTranscribePage(ConfigManager* configManager,
+                                SenseVoiceEngine* sttEngine,
+                                QWidget* parent = nullptr);
     ~FileTranscribePage() override;
 
 private slots:

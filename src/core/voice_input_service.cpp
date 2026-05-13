@@ -31,11 +31,14 @@ struct VoiceInputService::Impl {
     WaylandTextInjector* injector = nullptr;
 };
 
-VoiceInputService::VoiceInputService(ConfigManager* configManager, QObject* parent)
+VoiceInputService::VoiceInputService(ConfigManager* configManager,
+                                     SenseVoiceEngine* sttEngine,
+                                     QObject* parent)
     : QObject(parent)
     , configManager_(configManager)
     , impl_(std::make_unique<Impl>())
 {
+    impl_->sttEngine = sttEngine;
     longPressTimer_ = new QTimer(this);
     longPressTimer_->setSingleShot(true);
     connect(longPressTimer_, &QTimer::timeout, this, [this]() {
@@ -59,30 +62,7 @@ bool VoiceInputService::start() {
     connect(impl_->audioCapture, &AudioCapture::audioDataReady,
             this, &VoiceInputService::onAudioData);
 
-    // 2. 初始化 STT 引擎并加载模型
-    impl_->sttEngine = new SenseVoiceEngine(this);
-
-    // 从配置加载模型
-    QString modelPath = configManager_->get("stt.model_path").toString();
-    QString tokensPath = configManager_->get("stt.tokens_path").toString();
-    QString device = configManager_->get("stt.device").toString();
-    int numThreads = configManager_->get("stt.num_threads").toInt();
-
-    if (!modelPath.isEmpty()) {
-        LOG_INFO(kTag, QString("正在加载 STT 模型: %1").arg(modelPath));
-        bool modelLoaded = impl_->sttEngine->loadModelSync(modelPath, tokensPath, device, numThreads);
-        if (!modelLoaded) {
-            emit error(QString("STT 模型加载失败: %1").arg(modelPath));
-            LOG_ERROR(kTag, "STT 模型加载失败");
-        } else {
-            LOG_INFO(kTag, "STT 模型加载成功");
-            // 同步调试音频设置
-            bool debugSave = configManager_->get("stt.debug_save_audio").toBool();
-            impl_->sttEngine->setDebugSaveAudio(debugSave);
-        }
-    } else {
-        LOG_WARNING(kTag, "模型路径为空，请先在配置中设置模型路径");
-    }
+    // 2. STT 引擎已作为参数传入（共享全局实例）
 
     // 3. 初始化全局快捷键
     impl_->hotkey = new CapsLockVoiceHotkey(this);
@@ -123,9 +103,6 @@ void VoiceInputService::stop() {
 
     if (impl_->audioCapture) {
         impl_->audioCapture->stop();
-    }
-    if (impl_->sttEngine) {
-        impl_->sttEngine->unloadModel();
     }
     if (impl_->hotkey) {
         impl_->hotkey->stop();

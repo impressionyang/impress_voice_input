@@ -25,10 +25,12 @@ static const char* const kTag = "STTTestPage";
 
 namespace impress {
 
-STTTestPage::STTTestPage(ConfigManager* configManager, QWidget* parent)
+STTTestPage::STTTestPage(ConfigManager* configManager,
+                         SenseVoiceEngine* sttEngine,
+                         QWidget* parent)
     : QWidget(parent)
     , configManager_(configManager)
-    , sttEngine_(new SenseVoiceEngine(this))
+    , sttEngine_(sttEngine)
     , audioCapture_(new AudioCapture(this))
     , inferenceTimer_(new QTimer(this))
 {
@@ -122,16 +124,14 @@ void STTTestPage::onToggleRecording() {
     if (isRecording_) {
         audioCapture_->stop();
         inferenceTimer_->stop();
-        sttEngine_->unloadModel();
         isRecording_ = false;
         isInferencing_ = false;
         audioBuffer_.clear();
     } else {
-        // 读取配置
-        QString modelPath = configManager_->get("stt.model_path").toString();
-        if (modelPath.isEmpty()) {
+        // 检查全局模型是否已加载
+        if (!sttEngine_->isLoaded()) {
             QMessageBox::warning(this, "提示",
-                "请先在「配置」页面设置模型路径并保存");
+                "模型尚未加载完成，请稍候再试");
             return;
         }
 
@@ -139,38 +139,17 @@ void STTTestPage::onToggleRecording() {
         sttEngine_->setDebugSaveAudio(
             configManager_->get("stt.debug_save_audio").toBool());
 
-        // 异步加载模型
-        if (!sttEngine_->isLoaded() ||
-            currentModelPath_ != modelPath) {
-            isLoadingModel_ = true;
-            statusLabel_->setText("正在加载模型，请稍候...");
-            updateUIState();
-
-            sttEngine_->loadModelAsync(modelPath,
-                configManager_->get("stt.tokens_path").toString(),
-                configManager_->get("stt.device").toString(),
-                configManager_->get("stt.num_threads").toInt());
-
-            currentModelPath_ = modelPath;
-            // 注意：startAudioCapture() 将在 onModelLoaded() 回调中调用
-        } else {
-            startAudioCapture();
-        }
+        startAudioCapture();
     }
     updateUIState();
 }
 
 void STTTestPage::onModelLoaded(const QString& modelPath) {
-    LOG_INFO(kTag, QString("模型加载成功: %1").arg(modelPath));
+    LOG_INFO(kTag, QString("全局模型加载成功: %1").arg(modelPath));
     isLoadingModel_ = false;
     statusLabel_->setText(QString("模型就绪: %1").arg(
         QFileInfo(modelPath).fileName()));
     updateUIState();
-
-    // 如果用户仍在录音状态（已切换 UI），启动采集
-    if (!isRecording_) {
-        startAudioCapture();
-    }
 }
 
 void STTTestPage::onModelLoadError(const QString& modelPath, const QString& error) {
@@ -206,8 +185,7 @@ void STTTestPage::startAudioCapture() {
     // 启动周期性推理定时器
     startInferenceTimer();
 
-    statusLabel_->setText(QString("录音中 | 模型: %1").arg(
-        QFileInfo(currentModelPath_).fileName()));
+    statusLabel_->setText("录音中 | 模型已加载");
     updateUIState();
 }
 

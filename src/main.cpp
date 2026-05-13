@@ -56,8 +56,8 @@ int main(int argc, char* argv[])
         configManager->set("stt.model_path", modelPath);
     }
 
-    // 创建并显示主窗口
-    impress::MainWindow mainWindow(configManager);
+    // 创建并显示主窗口（传入全局引擎）
+    impress::MainWindow mainWindow(configManager, app.sttEngine());
     mainWindow.show();
 
     return app.exec();

@@ -31,10 +31,12 @@ static const char* const kTag = "FileTranscribePage";
 
 namespace impress {
 
-FileTranscribePage::FileTranscribePage(ConfigManager* configManager, QWidget* parent)
+FileTranscribePage::FileTranscribePage(ConfigManager* configManager,
+                                       SenseVoiceEngine* sttEngine,
+                                       QWidget* parent)
     : QWidget(parent)
     , configManager_(configManager)
-    , sttEngine_(new SenseVoiceEngine(this))
+    , sttEngine_(sttEngine)
     , audioDecoder_(new AudioDecoder(this))
 {
     setupUI();
@@ -148,46 +150,25 @@ void FileTranscribePage::onStartTranscribe() {
         return;
     }
 
-    QString modelPath = configManager_->get("stt.model_path").toString();
-    if (modelPath.isEmpty()) {
-        QMessageBox::warning(this, "提示", "请先在配置页面设置模型路径");
+    // 检查全局模型是否已加载
+    if (!sttEngine_->isLoaded()) {
+        QMessageBox::warning(this, "提示",
+            "模型尚未加载完成，请稍候再试");
         return;
     }
 
-    // 在后台线程中加载模型（不阻塞 UI）
-    statusLabel_->setText("正在加载模型...");
-    startBtn_->setEnabled(false);
-    activeWorkers_ = 1; // 标记正在加载模型
+    // 从配置同步调试开关到引擎
+    sttEngine_->setDebugSaveAudio(
+        configManager_->get("stt.debug_save_audio").toBool());
 
-    (void)QtConcurrent::run([this, modelPath]() {
-        bool success = sttEngine_->loadModelSync(modelPath,
-            configManager_->get("stt.tokens_path").toString(),
-            configManager_->get("stt.device").toString(),
-            configManager_->get("stt.num_threads").toInt());
+    isTranscribing_ = true;
+    currentTaskIndex_ = 0;
+    progressBar_->setVisible(true);
+    updateUIState();
+    statusLabel_->setText("开始批量转写...");
 
-        QMetaObject::invokeMethod(this, [this, success]() {
-            activeWorkers_--;
-            if (!success) {
-                QMessageBox::critical(this, "错误", "模型加载失败");
-                statusLabel_->setText("模型加载失败");
-                startBtn_->setEnabled(true);
-                return;
-            }
-
-            // 从配置同步调试开关到引擎
-            sttEngine_->setDebugSaveAudio(
-                configManager_->get("stt.debug_save_audio").toBool());
-
-            isTranscribing_ = true;
-            currentTaskIndex_ = 0;
-            progressBar_->setVisible(true);
-            updateUIState();
-            statusLabel_->setText("开始批量转写...");
-
-            // 启动后台转写队列
-            startBatchTranscription();
-        }, Qt::QueuedConnection);
-    });
+    // 启动后台转写队列
+    startBatchTranscription();
 }
 
 void FileTranscribePage::onStopTranscribe() {
@@ -195,7 +176,6 @@ void FileTranscribePage::onStopTranscribe() {
     activeWorkers_ = 0;
     progressBar_->setVisible(false);
     statusLabel_->setText("已停止");
-    sttEngine_->unloadModel();
     updateUIState();
 }
 
@@ -296,7 +276,6 @@ void FileTranscribePage::onAllComplete() {
     isTranscribing_ = false;
     statusLabel_->setText("全部完成");
     progressBar_->setVisible(false);
-    sttEngine_->unloadModel();
     updateUIState();
 }
 

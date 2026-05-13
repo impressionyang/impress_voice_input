@@ -7,6 +7,7 @@
 namespace impress {
 
 class ConfigManager;
+class SenseVoiceEngine;
 class STTTestPage;
 class FileTranscribePage;
 class SettingsPage;
@@ -15,19 +16,21 @@ class VoiceInputService;
 /**
  * @brief 主窗口
  *
- * 使用 Tab 页导航管理三个功能页面。
+ * 使用 Tab 页导航管理三个功能页面，共享全局 STT 引擎。
  */
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(ConfigManager* configManager, QWidget* parent = nullptr);
+    explicit MainWindow(ConfigManager* configManager,
+                        SenseVoiceEngine* sttEngine,
+                        QWidget* parent = nullptr);
     ~MainWindow() override;
 
 protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    void setupUI();
+    void setupUI(SenseVoiceEngine* sttEngine);
     void setupMenuBar();
     void loadStyleSheet();
     void onVoiceInputConfigChanged();

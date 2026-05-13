@@ -27,7 +27,9 @@ class AudioCapture;
 class STTTestPage : public QWidget {
     Q_OBJECT
 public:
-    explicit STTTestPage(ConfigManager* configManager, QWidget* parent = nullptr);
+    explicit STTTestPage(ConfigManager* configManager,
+                         SenseVoiceEngine* sttEngine,
+                         QWidget* parent = nullptr);
     ~STTTestPage() override;
 
 private slots:
@@ -64,7 +66,6 @@ private:
     bool isInferencing_ = false;
     int audioSampleRate_ = 16000;
     std::vector<float> audioBuffer_;
-    QString currentModelPath_;
 };
 
 } // namespace impress

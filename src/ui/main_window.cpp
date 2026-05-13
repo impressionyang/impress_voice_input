@@ -3,6 +3,7 @@
 #include "file_transcribe_page.h"
 #include "settings_page.h"
 #include "core/voice_input_service.h"
+#include "core/sense_voice_engine.h"
 #include "app/config_manager.h"
 #include "utils/logger.h"
 
@@ -16,19 +17,21 @@ static const char* const kTag = "MainWindow";
 
 namespace impress {
 
-MainWindow::MainWindow(ConfigManager* configManager, QWidget* parent)
+MainWindow::MainWindow(ConfigManager* configManager,
+                       SenseVoiceEngine* sttEngine,
+                       QWidget* parent)
     : QMainWindow(parent)
     , configManager_(configManager)
 {
     setWindowTitle("Impress Voice Input");
     resize(1000, 700);
 
-    setupUI();
+    setupUI(sttEngine);
     setupMenuBar();
     loadStyleSheet();
 
-    // 初始化语音输入服务
-    voiceInputService_ = new VoiceInputService(configManager_, this);
+    // 初始化语音输入服务（共享全局引擎）
+    voiceInputService_ = new VoiceInputService(configManager_, sttEngine, this);
     connect(voiceInputService_, &VoiceInputService::statusChanged,
             this, [this](const QString& status) {
                 LOG_DEBUG(kTag, QString("语音输入状态: %1").arg(status));
@@ -54,11 +57,11 @@ MainWindow::MainWindow(ConfigManager* configManager, QWidget* parent)
 
 MainWindow::~MainWindow() = default;
 
-void MainWindow::setupUI() {
+void MainWindow::setupUI(SenseVoiceEngine* sttEngine) {
     tabWidget_ = new QTabWidget(this);
 
-    sttPage_ = new STTTestPage(configManager_, tabWidget_);
-    transcribePage_ = new FileTranscribePage(configManager_, tabWidget_);
+    sttPage_ = new STTTestPage(configManager_, sttEngine, tabWidget_);
+    transcribePage_ = new FileTranscribePage(configManager_, sttEngine, tabWidget_);
     settingsPage_ = new SettingsPage(configManager_, tabWidget_);
 
     tabWidget_->addTab(sttPage_, "实时语音识别");

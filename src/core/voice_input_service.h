@@ -27,7 +27,9 @@ class ConfigManager;
 class VoiceInputService : public QObject {
     Q_OBJECT
 public:
-    explicit VoiceInputService(ConfigManager* configManager, QObject* parent = nullptr);
+    explicit VoiceInputService(ConfigManager* configManager,
+                               SenseVoiceEngine* sttEngine,
+                               QObject* parent = nullptr);
     ~VoiceInputService() override;
 
     /** @brief 启动服务（初始化所有组件） */
