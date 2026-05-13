@@ -83,7 +83,8 @@ void ConfigManager::loadDefaults() {
                 {"input_device", -1},
                 {"buffer_size_ms", 20},
                 {"chunk_duration_ms", 3000},
-                {"padding_ms", 500}
+                {"padding_ms", 500},
+                {"debug_dir", ""}
             }},
             {"ui", QVariantMap{
                 {"theme", "light"},

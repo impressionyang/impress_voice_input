@@ -67,6 +67,7 @@ set(SOURCES
     src/audio/audio_capture.cpp
     src/audio/audio_decoder.cpp
     src/audio/audio_ring_buffer.cpp
+    src/audio/streaming_audio_writer.cpp
 
     # UI
     src/ui/main_window.cpp
@@ -102,6 +103,7 @@ set(HEADERS
     src/audio/audio_capture.h
     src/audio/audio_decoder.h
     src/audio/audio_ring_buffer.h
+    src/audio/streaming_audio_writer.h
 
     src/ui/main_window.h
     src/ui/stt_test_page.h

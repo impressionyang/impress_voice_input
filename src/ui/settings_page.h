@@ -31,6 +31,7 @@ public:
 private slots:
     void onBrowseModelPath();
     void onBrowseTokensPath();
+    void onBrowseAudioDebugDir();
     void onSaveConfig();
     void onResetConfig();
 
@@ -62,6 +63,8 @@ private:
 
     // 音频设置
     QComboBox* audioDeviceCombo_;
+    QLineEdit* audioDebugDirEdit_;
+    QPushButton* audioDebugDirBtn_;
     QSpinBox* bufferSizeSpin_;
     QSpinBox* chunkDurationSpin_;
     QSpinBox* paddingSpin_;

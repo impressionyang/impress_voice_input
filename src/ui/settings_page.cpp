@@ -120,6 +120,16 @@ void SettingsPage::setupUI() {
     populateAudioDevices();
     audioLayout->addRow("输入设备:", audioDeviceCombo_);
 
+    // 音频调试目录
+    auto* debugDirRow = new QHBoxLayout();
+    audioDebugDirEdit_ = new QLineEdit(this);
+    audioDebugDirEdit_->setPlaceholderText("流式识别 WAV 文件保存路径（为空时使用系统临时目录）");
+    audioDebugDirBtn_ = new QPushButton("浏览...", this);
+    connect(audioDebugDirBtn_, &QPushButton::clicked, this, &SettingsPage::onBrowseAudioDebugDir);
+    debugDirRow->addWidget(audioDebugDirEdit_);
+    debugDirRow->addWidget(audioDebugDirBtn_);
+    audioLayout->addRow("调试音频目录:", debugDirRow);
+
     bufferSizeSpin_ = new QSpinBox(this);
     bufferSizeSpin_->setRange(10, 100);
     bufferSizeSpin_->setValue(20);
@@ -206,6 +216,7 @@ void SettingsPage::loadFromConfig() {
     // 恢复音频设备选择
     int savedDevice = configManager_->get("audio.input_device").toInt();
     selectAudioDevice(savedDevice);
+    audioDebugDirEdit_->setText(configManager_->get("audio.debug_dir").toString());
 
     themeCombo_->setCurrentText(configManager_->get("ui.theme").toString());
     fontSizeSpin_->setValue(configManager_->get("ui.font_size").toInt());
@@ -229,6 +240,7 @@ void SettingsPage::saveToConfig() {
     batch["stt.temperature"] = temperatureSpin_->value();
     batch["shortcuts.voice_hotkey"] = hotkeyRecorder_->hotkeyText();
     batch["audio.input_device"] = getSelectedAudioDeviceIndex();
+    batch["audio.debug_dir"] = audioDebugDirEdit_->text();
     batch["audio.buffer_size_ms"] = bufferSizeSpin_->value();
     batch["audio.chunk_duration_ms"] = chunkDurationSpin_->value();
     batch["audio.padding_ms"] = paddingSpin_->value();
@@ -290,6 +302,14 @@ void SettingsPage::onBrowseTokensPath() {
         "词表文件 (tokens.txt);;所有文件 (*.*)");
     if (!path.isEmpty()) {
         tokensPathEdit_->setText(path);
+    }
+}
+
+void SettingsPage::onBrowseAudioDebugDir() {
+    QString path = QFileDialog::getExistingDirectory(this, "选择调试音频目录", "",
+        QFileDialog::ShowDirsOnly);
+    if (!path.isEmpty()) {
+        audioDebugDirEdit_->setText(path);
     }
 }
 
