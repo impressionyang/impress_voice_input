@@ -28,7 +28,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Qt 6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Concurrent Network DBus)
 qt_standard_project_setup()
 
 # ONNX Runtime
@@ -53,6 +53,9 @@ set(SOURCES
     src/core/whisper_tokenizer.cpp
     src/core/audio_processor.cpp
     src/core/vad.cpp
+    src/core/caps_lock_voice_hotkey.cpp
+    src/core/wayland_text_injector.cpp
+    src/core/voice_input_service.cpp
 
     # Audio
     src/audio/audio_capture.cpp
@@ -87,6 +90,9 @@ set(HEADERS
     src/core/whisper_tokenizer.h
     src/core/audio_processor.h
     src/core/vad.h
+    src/core/caps_lock_voice_hotkey.h
+    src/core/wayland_text_injector.h
+    src/core/voice_input_service.h
 
     src/audio/audio_capture.h
     src/audio/audio_decoder.h
@@ -124,6 +130,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     Qt6::Concurrent
     Qt6::Network
+    Qt6::DBus
     ${ONNXRUNTIME_LIBRARIES}
     ${PORTAUDIO_LIBRARIES}
     pthread

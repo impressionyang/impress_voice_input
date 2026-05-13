@@ -1,0 +1,80 @@
+#pragma once
+
+#include <QObject>
+#include <QString>
+#include <QTimer>
+#include <vector>
+#include <memory>
+
+namespace impress {
+
+class AudioCapture;
+class SenseVoiceEngine;
+class CapsLockVoiceHotkey;
+class WaylandTextInjector;
+class ConfigManager;
+
+/**
+ * @brief CapsLock 语音输入服务
+ *
+ * 协调全局快捷键、音频采集、STT 推理和文本注入。
+ * 状态机：
+ * 1. 空闲 → 按下快捷键 → 开始录音
+ * 2. 长按超过 1 秒 → 开始正式录音（清除之前的静音段）
+ * 3. 松开快捷键 → 停止录音 → 推理 → 注入文本
+ * 4. 短按（< 1 秒）→ 注入 CapsLock 按键（切换大小写）
+ */
+class VoiceInputService : public QObject {
+    Q_OBJECT
+public:
+    explicit VoiceInputService(ConfigManager* configManager, QObject* parent = nullptr);
+    ~VoiceInputService() override;
+
+    /** @brief 启动服务（初始化所有组件） */
+    bool start();
+
+    /** @brief 停止服务 */
+    void stop();
+
+    /** @brief 是否已启动 */
+    bool isRunning() const { return running_; }
+
+    /** @brief 是否正在录音 */
+    bool isRecording() const { return recording_; }
+
+    /** @brief 长按阈值（毫秒），默认 1000ms */
+    void setLongPressThreshold(int ms) { longPressThreshold_ = ms; }
+    int longPressThreshold() const { return longPressThreshold_; }
+
+signals:
+    void statusChanged(const QString& status);
+    void recognitionResult(const QString& text);
+    void error(const QString& message);
+
+private slots:
+    void onHotkeyActivated();
+    void onHotkeyDeactivated();
+    void onAudioData(const std::vector<float>& samples, int sampleRate);
+    void onRecognitionComplete(const QString& text);
+
+private:
+    struct Impl;
+    ConfigManager* configManager_ = nullptr;
+    std::unique_ptr<Impl> impl_;
+
+    bool running_ = false;
+    bool recording_ = false;
+    bool longPressDetected_ = false;
+    int longPressThreshold_ = 1000;
+
+    std::vector<float> audioBuffer_;
+    int audioSampleRate_ = 16000;
+
+    QTimer* longPressTimer_ = nullptr;
+
+    void startRecording();
+    void stopRecordingAndTranscribe();
+    void simulateCapsLock();
+};
+
+} // namespace impress

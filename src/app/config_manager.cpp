@@ -74,7 +74,9 @@ void ConfigManager::loadDefaults() {
             {"language", "zh"},
             {"streaming", true},
             {"beam_size", 5},
-            {"temperature", 0.0}
+            {"temperature", 0.0},
+            {"debug_save_audio", false},
+            {"capslock_voice_enabled", false}
         }},
         {"audio", QVariantMap{
             {"input_device", -1},

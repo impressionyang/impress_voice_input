@@ -1,0 +1,222 @@
+#include "caps_lock_voice_hotkey.h"
+#include "utils/logger.h"
+
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
+#include <QCoreApplication>
+#include <QUuid>
+
+static const char* const kTag = "CapsLockVoiceHotkey";
+
+// Portal 常量
+static const char* const kPortalService = "org.freedesktop.portal.Desktop";
+static const char* const kPortalObjectPath = "/org/freedesktop/portal/desktop";
+static const char* const kGlobalShortcutsIface = "org.freedesktop.portal.GlobalShortcuts";
+static const char* const kRequestIface = "org.freedesktop.portal.Request";
+
+namespace impress {
+
+struct CapsLockVoiceHotkey::Impl {
+    QString sessionPath;
+    QString pendingRequestPath;
+
+    enum State { Idle, WaitingSession, WaitingBind, Active };
+    State state = Idle;
+
+    /** 生成唯一 token */
+    static QString makeToken(const QString& prefix) {
+        return prefix + "_" + QUuid::createUuid().toString().mid(1, 8);
+    }
+
+    /** 构造 session path（从 sender 名和 token） */
+    static QString makeSessionPath(const QString& sender, const QString& token) {
+        QString safeSender = sender;
+        safeSender.remove(0, 1);  // 去掉前导 ':'
+        safeSender.replace('.', '_');
+        return QString("/org/freedesktop/portal/desktop/session/%1/%2")
+            .arg(safeSender, token);
+    }
+
+    /** 获取 session bus */
+    static QDBusConnection bus() {
+        return QDBusConnection::sessionBus();
+    }
+};
+
+CapsLockVoiceHotkey::CapsLockVoiceHotkey(QObject* parent)
+    : QObject(parent)
+    , impl_(std::make_unique<Impl>())
+{}
+
+CapsLockVoiceHotkey::~CapsLockVoiceHotkey() {
+    stop();
+}
+
+bool CapsLockVoiceHotkey::start() {
+    if (active_) return true;
+
+    QDBusConnection bus = Impl::bus();
+    if (!bus.isConnected()) {
+        emit error("无法连接到 D-Bus session bus");
+        return false;
+    }
+
+    // 连接信号
+    bus.connect(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, "Activated",
+        this, SLOT(handleActivated(QString)));
+
+    bus.connect(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, "Deactivated",
+        this, SLOT(handleDeactivated(QString)));
+
+    // 连接 Response 信号
+    bus.connect(kPortalService, QString(),
+        kRequestIface, "Response",
+        this, SLOT(onPortalResponse(uint, QVariantMap)));
+
+    // 发送 CreateSession
+    QDBusInterface portal(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, bus);
+
+    QString sessionToken = Impl::makeToken("io_impress_sess");
+    QString requestToken = Impl::makeToken("io_impress_req");
+
+    QVariantMap options;
+    options["handle_token"] = requestToken;
+    options["session_handle_token"] = sessionToken;
+
+    QDBusMessage reply = portal.call("CreateSession", options);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        emit error(QString("CreateSession 失败: %1").arg(reply.errorMessage()));
+        LOG_ERROR(kTag, reply.errorMessage());
+        return false;
+    }
+
+    // 保存预期 session path
+    QString sender = bus.baseService();
+    impl_->sessionPath = Impl::makeSessionPath(sender, sessionToken);
+    impl_->state = Impl::WaitingSession;
+
+    LOG_INFO(kTag, "CreateSession 已发送，等待用户授权...");
+    LOG_DEBUG(kTag, QString("Session path: %1").arg(impl_->sessionPath));
+    return true;
+}
+
+void CapsLockVoiceHotkey::stop() {
+    if (!active_ && impl_->state == Impl::Idle) return;
+
+    QDBusConnection bus = Impl::bus();
+    bus.disconnect(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, "Activated",
+        this, SLOT(handleActivated(QString)));
+    bus.disconnect(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, "Deactivated",
+        this, SLOT(handleDeactivated(QString)));
+    bus.disconnect(kPortalService, QString(),
+        kRequestIface, "Response",
+        this, SLOT(onPortalResponse(uint, QVariantMap)));
+
+    active_ = false;
+    recording_ = false;
+    impl_->state = Impl::Idle;
+    impl_->sessionPath.clear();
+    LOG_INFO(kTag, "CapsLock 语音快捷键已停止");
+}
+
+void CapsLockVoiceHotkey::onPortalResponse(uint response, const QVariantMap& results) {
+    if (impl_->state == Impl::WaitingSession) {
+        handleSessionResponse(response, results);
+    } else if (impl_->state == Impl::WaitingBind) {
+        handleBindResponse(response, results);
+    }
+}
+
+void CapsLockVoiceHotkey::handleSessionResponse(uint response, const QVariantMap& results) {
+    if (impl_->state != Impl::WaitingSession) return;
+
+    if (response != 0) {
+        emit error(QString("Session 被拒绝 (response=%1)").arg(response));
+        LOG_ERROR(kTag, QString("Session 被拒绝: %1").arg(response));
+        impl_->state = Impl::Idle;
+        return;
+    }
+
+    QString actualPath = results.value("session_handle").toString();
+    if (!actualPath.isEmpty()) {
+        impl_->sessionPath = actualPath;
+    }
+    LOG_INFO(kTag, QString("Session 已授权: %1").arg(impl_->sessionPath));
+
+    // 发送 BindShortcuts
+    impl_->state = Impl::WaitingBind;
+
+    QDBusInterface portal(kPortalService, kPortalObjectPath,
+        kGlobalShortcutsIface, Impl::bus());
+
+    QString bindToken = Impl::makeToken("io_impress_bind");
+
+    QVariantMap shortcutProps;
+    shortcutProps["description"] = "语音输入（CapsLock）";
+
+    QList<QVariant> shortcuts;
+    QVariantMap shortcutEntry;
+    shortcutEntry["id"] = "voice_input";
+    shortcutEntry["properties"] = shortcutProps;
+    shortcuts.append(shortcutEntry);
+
+    QVariantMap bindOptions;
+    bindOptions["handle_token"] = bindToken;
+
+    QDBusMessage reply = portal.call("BindShortcuts",
+        QDBusObjectPath(impl_->sessionPath),
+        shortcuts,
+        QString(),  // parent_window (空 = Wayland 模式)
+        bindOptions);
+
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        emit error(QString("BindShortcuts 失败: %1").arg(reply.errorMessage()));
+        LOG_ERROR(kTag, reply.errorMessage());
+        impl_->state = Impl::Idle;
+        return;
+    }
+
+    impl_->pendingRequestPath = reply.arguments().isEmpty() ?
+        QString() : reply.arguments()[0].toString();
+    LOG_INFO(kTag, "BindShortcuts 已发送，等待用户设置快捷键...");
+}
+
+void CapsLockVoiceHotkey::handleBindResponse(uint response, const QVariantMap&) {
+    if (impl_->state != Impl::WaitingBind) return;
+
+    if (response != 0) {
+        emit error(QString("快捷键绑定被拒绝 (response=%1)").arg(response));
+        LOG_ERROR(kTag, QString("Bind 被拒绝: %1").arg(response));
+        impl_->state = Impl::Idle;
+        return;
+    }
+
+    // 快捷键绑定成功
+    active_ = true;
+    impl_->state = Impl::Active;
+    emit ready();
+    LOG_INFO(kTag, "快捷键已注册，CapsLock 语音输入已就绪");
+}
+
+void CapsLockVoiceHotkey::handleActivated(const QString& shortcutId) {
+    if (!active_) return;
+    LOG_DEBUG(kTag, QString("快捷键按下: %1").arg(shortcutId));
+    recording_ = true;
+    emit recordingStarted();
+}
+
+void CapsLockVoiceHotkey::handleDeactivated(const QString& shortcutId) {
+    if (!active_) return;
+    LOG_DEBUG(kTag, QString("快捷键松开: %1").arg(shortcutId));
+    recording_ = false;
+    emit recordingStopped();
+}
+
+} // namespace impress
