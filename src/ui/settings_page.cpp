@@ -1,5 +1,6 @@
 #include "settings_page.h"
 #include "app/config_manager.h"
+#include "widgets/hotkey_recorder.h"
 #include "utils/logger.h"
 
 #include <QVBoxLayout>
@@ -87,9 +88,14 @@ void SettingsPage::setupUI() {
     debugSaveAudioCheck_->setToolTip("开启后，每次识别会将原始音频保存为 WAV 文件到系统临时目录，用于调试音频质量问题");
     sttLayout->addRow("调试录音:", debugSaveAudioCheck_);
 
-    capslockVoiceCheck_ = new QCheckBox("启用 CapsLock 长按语音输入", this);
-    capslockVoiceCheck_->setToolTip("长按 CapsLock 键 1 秒后触发录音，松开后自动转写并输入到光标位置");
-    sttLayout->addRow("快捷语音:", capslockVoiceCheck_);
+    // 快捷键录制按钮
+    hotkeyRecorder_ = new HotkeyRecorder("语音快捷键:", this);
+    hotkeyRecorder_->setToolTip("点击按钮后按下快捷键（如 Ctrl+Alt+K），支持组合键。Esc 取消录制。");
+    connect(hotkeyRecorder_, &HotkeyRecorder::hotkeyChanged,
+            this, [this](const QString& key) {
+                configManager_->set("shortcuts.voice_hotkey", key);
+            });
+    sttLayout->addRow(hotkeyRecorder_);
 
     beamSizeSpin_ = new QSpinBox(this);
     beamSizeSpin_->setRange(1, 20);
@@ -183,7 +189,7 @@ void SettingsPage::loadFromConfig() {
     languageCombo_->setCurrentText(configManager_->get("stt.language").toString());
     streamingCheck_->setChecked(configManager_->get("stt.streaming").toBool());
     debugSaveAudioCheck_->setChecked(configManager_->get("stt.debug_save_audio").toBool());
-    capslockVoiceCheck_->setChecked(configManager_->get("stt.capslock_voice_enabled").toBool());
+    hotkeyRecorder_->setHotkeyText(configManager_->get("shortcuts.voice_hotkey").toString());
     beamSizeSpin_->setValue(configManager_->get("stt.beam_size").toInt());
     temperatureSpin_->setValue(configManager_->get("stt.temperature").toDouble());
 
@@ -198,27 +204,29 @@ void SettingsPage::loadFromConfig() {
 }
 
 void SettingsPage::saveToConfig() {
-    configManager_->set("stt.model_path", modelPathEdit_->text());
-    configManager_->set("stt.tokens_path", tokensPathEdit_->text());
-    configManager_->set("stt.model_type", modelTypeCombo_->currentText());
-    configManager_->set("stt.device", deviceCombo_->currentText());
-    configManager_->set("stt.num_threads", threadSpin_->value());
-    configManager_->set("stt.sample_rate", sampleRateSpin_->value());
-    configManager_->set("stt.language", languageCombo_->currentText());
-    configManager_->set("stt.streaming", streamingCheck_->isChecked());
-    configManager_->set("stt.debug_save_audio", debugSaveAudioCheck_->isChecked());
-    configManager_->set("stt.capslock_voice_enabled", capslockVoiceCheck_->isChecked());
-    configManager_->set("stt.beam_size", beamSizeSpin_->value());
-    configManager_->set("stt.temperature", temperatureSpin_->value());
+    // 批量写入所有配置，只发射一次 configChanged 信号
+    QMap<QString, QVariant> batch;
+    batch["stt.model_path"] = modelPathEdit_->text();
+    batch["stt.tokens_path"] = tokensPathEdit_->text();
+    batch["stt.model_type"] = modelTypeCombo_->currentText();
+    batch["stt.device"] = deviceCombo_->currentText();
+    batch["stt.num_threads"] = threadSpin_->value();
+    batch["stt.sample_rate"] = sampleRateSpin_->value();
+    batch["stt.language"] = languageCombo_->currentText();
+    batch["stt.streaming"] = streamingCheck_->isChecked();
+    batch["stt.debug_save_audio"] = debugSaveAudioCheck_->isChecked();
+    batch["stt.beam_size"] = beamSizeSpin_->value();
+    batch["stt.temperature"] = temperatureSpin_->value();
+    batch["shortcuts.voice_hotkey"] = hotkeyRecorder_->hotkeyText();
+    batch["audio.buffer_size_ms"] = bufferSizeSpin_->value();
+    batch["audio.chunk_duration_ms"] = chunkDurationSpin_->value();
+    batch["audio.padding_ms"] = paddingSpin_->value();
+    batch["ui.theme"] = themeCombo_->currentText();
+    batch["ui.font_size"] = fontSizeSpin_->value();
+    batch["ui.show_waveform"] = showWaveformCheck_->isChecked();
+    batch["ui.show_confidence"] = showConfidenceCheck_->isChecked();
 
-    configManager_->set("audio.buffer_size_ms", bufferSizeSpin_->value());
-    configManager_->set("audio.chunk_duration_ms", chunkDurationSpin_->value());
-    configManager_->set("audio.padding_ms", paddingSpin_->value());
-
-    configManager_->set("ui.theme", themeCombo_->currentText());
-    configManager_->set("ui.font_size", fontSizeSpin_->value());
-    configManager_->set("ui.show_waveform", showWaveformCheck_->isChecked());
-    configManager_->set("ui.show_confidence", showConfidenceCheck_->isChecked());
+    configManager_->setBatch(batch);
 }
 
 void SettingsPage::onBrowseModelPath() {

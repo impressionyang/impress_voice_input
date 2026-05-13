@@ -62,38 +62,40 @@ bool ConfigManager::saveAs(const QString& path) {
 }
 
 void ConfigManager::loadDefaults() {
-    QMutexLocker locker(&mutex_);
-    config_ = QVariantMap{
-        {"stt", QVariantMap{
-            {"model_path", ""},
-            {"model_type", "sense_voice"},
-            {"tokens_path", ""},
-            {"device", "cpu"},
-            {"num_threads", 4},
-            {"sample_rate", 16000},
-            {"language", "zh"},
-            {"streaming", true},
-            {"beam_size", 5},
-            {"temperature", 0.0},
-            {"debug_save_audio", false},
-            {"capslock_voice_enabled", false}
-        }},
-        {"audio", QVariantMap{
-            {"input_device", -1},
-            {"buffer_size_ms", 20},
-            {"chunk_duration_ms", 3000},
-            {"padding_ms", 500}
-        }},
-        {"ui", QVariantMap{
-            {"theme", "light"},
-            {"font_size", 14},
-            {"show_waveform", true},
-            {"show_confidence", true}
-        }},
-        {"shortcuts", QVariantMap{
-            {"toggle_recording", "Ctrl+Space"}
-        }}
-    };
+    {
+        QMutexLocker locker(&mutex_);
+        config_ = QVariantMap{
+            {"stt", QVariantMap{
+                {"model_path", ""},
+                {"model_type", "sense_voice"},
+                {"tokens_path", ""},
+                {"device", "cpu"},
+                {"num_threads", 4},
+                {"sample_rate", 16000},
+                {"language", "zh"},
+                {"streaming", true},
+                {"beam_size", 5},
+                {"temperature", 0.0},
+                {"debug_save_audio", false},
+                {"capslock_voice_enabled", false}
+            }},
+            {"audio", QVariantMap{
+                {"input_device", -1},
+                {"buffer_size_ms", 20},
+                {"chunk_duration_ms", 3000},
+                {"padding_ms", 500}
+            }},
+            {"ui", QVariantMap{
+                {"theme", "light"},
+                {"font_size", 14},
+                {"show_waveform", true},
+                {"show_confidence", true}
+            }},
+            {"shortcuts", QVariantMap{
+                {"voice_hotkey", "CapsLock"}
+            }}
+        };
+    }
     emit configChanged();
 }
 
@@ -116,8 +118,22 @@ QVariant ConfigManager::getValue(const QVariantMap& map, const QStringList& part
 }
 
 void ConfigManager::set(const QString& key, const QVariant& value) {
-    QMutexLocker locker(&mutex_);
-    setValue(config_, key.split('.'), 0, value);
+    {
+        QMutexLocker locker(&mutex_);
+        setValue(config_, key.split('.'), 0, value);
+    }
+    // 锁释放后再发射信号，防止槽函数中调用 get() 时死锁
+    emit configChanged();
+}
+
+void ConfigManager::setBatch(const QMap<QString, QVariant>& pairs) {
+    {
+        QMutexLocker locker(&mutex_);
+        for (auto it = pairs.constBegin(); it != pairs.constEnd(); ++it) {
+            setValue(config_, it.key().split('.'), 0, it.value());
+        }
+    }
+    // 锁释放后再发射信号，只发射一次
     emit configChanged();
 }
 

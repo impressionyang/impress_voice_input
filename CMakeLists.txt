@@ -76,6 +76,7 @@ set(SOURCES
     src/ui/widgets/audio_waveform.cpp
     src/ui/widgets/text_output.cpp
     src/ui/widgets/progress_panel.cpp
+    src/ui/widgets/hotkey_recorder.cpp
 
     # Utils
     src/utils/logger.cpp
@@ -109,6 +110,7 @@ set(HEADERS
     src/ui/widgets/audio_waveform.h
     src/ui/widgets/text_output.h
     src/ui/widgets/progress_panel.h
+    src/ui/widgets/hotkey_recorder.h
 
     src/utils/logger.h
     src/utils/timer.h

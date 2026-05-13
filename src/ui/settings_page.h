@@ -15,6 +15,7 @@ class QGroupBox;
 namespace impress {
 
 class ConfigManager;
+class HotkeyRecorder;
 
 /**
  * @brief 配置页面
@@ -52,7 +53,7 @@ private:
     QComboBox* languageCombo_;
     QCheckBox* streamingCheck_;
     QCheckBox* debugSaveAudioCheck_;
-    QCheckBox* capslockVoiceCheck_;
+    HotkeyRecorder* hotkeyRecorder_;
     QSpinBox* beamSizeSpin_;
     QDoubleSpinBox* temperatureSpin_;
 

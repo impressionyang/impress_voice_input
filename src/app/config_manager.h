@@ -36,6 +36,9 @@ public:
     /** @brief 设置配置值 */
     void set(const QString& key, const QVariant& value);
 
+    /** @brief 批量设置多个配置值（只发射一次 configChanged） */
+    void setBatch(const QMap<QString, QVariant>& pairs);
+
     /** @brief 重置为默认配置 */
     void resetToDefaults();
 

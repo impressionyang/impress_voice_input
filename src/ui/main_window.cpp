@@ -168,13 +168,15 @@ void MainWindow::onVoiceInputConfigChanged() {
     // 更新模型状态显示
     updateModelStatus();
 
-    bool enabled = configManager_->get("stt.capslock_voice_enabled").toBool();
+    // 当设置了语音快捷键时启用语音输入服务
+    QString hotkey = configManager_->get("shortcuts.voice_hotkey").toString();
+    bool enabled = !hotkey.isEmpty() && hotkey != "未设置";
     if (enabled && !voiceInputService_->isRunning()) {
         voiceInputService_->start();
-        LOG_INFO(kTag, "CapsLock 语音输入已启用");
+        LOG_INFO(kTag, QString("语音输入已启用（快捷键: %1）").arg(hotkey));
     } else if (!enabled && voiceInputService_->isRunning()) {
         voiceInputService_->stop();
-        LOG_INFO(kTag, "CapsLock 语音输入已关闭");
+        LOG_INFO(kTag, "语音输入已关闭");
     }
 }
 
