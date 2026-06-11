@@ -139,9 +139,16 @@ else()
     list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
     add_compile_definitions(PLATFORM_LINUX)
 endif()
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS}
-    src/ui/resources/styles/styles.qrc
-)
+# Windows 使用 WIN32 标志隐藏启动控制台
+if(WIN32)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS}
+        src/ui/resources/styles/styles.qrc
+    )
+else()
+    add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS}
+        src/ui/resources/styles/styles.qrc
+    )
+endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

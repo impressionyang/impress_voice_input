@@ -194,9 +194,10 @@ void MainWindow::loadStyleSheet() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
-    LOG_INFO(kTag, "主窗口关闭");
-    doExit();
-    QMainWindow::closeEvent(event);
+    // 关闭按钮隐藏到托盘，不退出程序
+    LOG_INFO(kTag, "主窗口隐藏到托盘");
+    hide();
+    event->ignore();
 }
 
 void MainWindow::doExit() {
