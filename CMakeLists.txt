@@ -139,10 +139,11 @@ else()
     list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
     add_compile_definitions(PLATFORM_LINUX)
 endif()
-# Windows 使用 WIN32 标志隐藏启动控制台
+# Windows 使用 WIN32 标志隐藏启动控制台，并嵌入应用图标
 if(WIN32)
     add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS}
         src/ui/resources/styles/styles.qrc
+        src/ui/resources/icons/icon.rc
     )
 else()
     add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS}

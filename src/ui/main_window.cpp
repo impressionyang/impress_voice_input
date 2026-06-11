@@ -20,6 +20,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QStyle>
+#include <QIcon>
 
 static const char* const kTag = "MainWindow";
 
@@ -33,6 +34,9 @@ MainWindow::MainWindow(ConfigManager* configManager,
 {
     setWindowTitle("Impress Voice Input");
     resize(1000, 700);
+
+    // 设置窗口图标
+    setWindowIcon(QIcon(":/icons/app_icon.png"));
 
     setupUI(sttEngine);
     setupMenuBar();
