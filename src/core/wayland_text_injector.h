@@ -30,6 +30,9 @@ public:
     /** @brief 模拟 X11 keycode 按下+释放（用于 CapsLock 等系统按键） */
     bool simulateKeycode(unsigned int keycode);
 
+    /** @brief 模拟 keysym 按下+释放（自动转换为 keycode） */
+    bool simulateKeysym(unsigned long keysym);
+
 signals:
     void error(const QString& message);
 

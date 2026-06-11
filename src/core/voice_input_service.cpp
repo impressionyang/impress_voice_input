@@ -152,6 +152,8 @@ void VoiceInputService::onHotkeyDeactivated() {
     } else {
         // 长按 → 停止录音并转写
         stopRecordingAndTranscribe();
+        // 恢复 CapsLock 原始状态（系统已处理了一次 CapsLock 切换）
+        simulateCapsLock();
     }
 
     longPressDetected_ = false;
@@ -213,9 +215,8 @@ void VoiceInputService::onRecognitionComplete(const QString& text) {
 
 void VoiceInputService::simulateCapsLock() {
     if (impl_->injector && impl_->injector->isInitialized()) {
-        // CapsLock keysym = 0xffe5
-        unsigned int capslockKeysym = 0xffe5;
-        impl_->injector->simulateKeycode(capslockKeysym);
+        // XK_Caps_Lock = 0xffe5，使用 simulateKeysym 自动转换为 keycode
+        impl_->injector->simulateKeysym(0xffe5);
         LOG_DEBUG(kTag, "模拟 CapsLock 按键已注入");
     } else {
         LOG_WARNING(kTag, "文本注入器未初始化，无法模拟 CapsLock");

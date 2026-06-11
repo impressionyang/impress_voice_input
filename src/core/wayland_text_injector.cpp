@@ -178,4 +178,17 @@ bool WaylandTextInjector::simulateKeycode(unsigned int keycode) {
     return true;
 }
 
+bool WaylandTextInjector::simulateKeysym(unsigned long keysym) {
+    if (!impl_->display || !impl_->XKeysymToKeycode) return false;
+
+    unsigned int keycode = impl_->XKeysymToKeycode(impl_->display, keysym);
+    if (keycode == 0) {
+        LOG_WARNING(kTag, QString("keysym 0x%1 无法转换为 keycode").arg(keysym, 0, 16));
+        return false;
+    }
+
+    LOG_DEBUG(kTag, QString("模拟 keysym 0x%1 → keycode %2").arg(keysym, 0, 16).arg(keycode));
+    return simulateKeycode(keycode);
+}
+
 } // namespace impress

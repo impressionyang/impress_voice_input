@@ -29,6 +29,9 @@ public:
     /** @brief 模拟 keycode 按下+释放（Windows 使用虚拟键码） */
     bool simulateKeycode(unsigned int keycode);
 
+    /** @brief 模拟 keysym 按下+释放（X11 keysym，自动映射为 Windows VK 键码） */
+    bool simulateKeysym(unsigned long keysym);
+
 signals:
     void error(const QString& message);
 

@@ -111,4 +111,27 @@ bool WaylandTextInjector::simulateKeycode(unsigned int keycode) {
 #endif
 }
 
+bool WaylandTextInjector::simulateKeysym(unsigned long keysym) {
+#ifdef Q_OS_WIN
+    // X11 keysym → Windows Virtual Key 映射
+    WORD vk = 0;
+    switch (keysym) {
+    case 0xffe5: vk = 0x14; break; // XK_Caps_Lock → VK_CAPITAL
+    case 0xffe1: vk = 0x10; break; // XK_Shift_L   → VK_SHIFT
+    case 0xffe2: vk = 0x10; break; // XK_Shift_R   → VK_SHIFT
+    case 0xffe3: vk = 0x11; break; // XK_Control_L → VK_CONTROL
+    case 0xffe4: vk = 0x11; break; // XK_Control_R → VK_CONTROL
+    case 0xffe9: vk = 0x12; break; // XK_Alt_L     → VK_MENU
+    case 0xffea: vk = 0x12; break; // XK_Alt_R     → VK_MENU
+    default:
+        LOG_WARNING(kTag, QString("不支持的 keysym 映射: 0x%1").arg(keysym, 0, 16));
+        return false;
+    }
+    return simulateKeycode(vk);
+#else
+    (void)keysym;
+    return false;
+#endif
+}
+
 } // namespace impress
