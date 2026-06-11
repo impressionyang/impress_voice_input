@@ -115,13 +115,15 @@ void StreamingAudioWriter::writeSamples(const std::vector<float>& samples) {
                 .arg(silenceFramesAfterSpeech_)
                 .arg(vad_->currentEnergy(), 0, 'f', 4));
 
-            // 完成当前文件
+            // 保存文件信息（必须在 closeCurrentFile 之前）
+            QString completedPath = currentFilePath_;
+            int durationMs = static_cast<int>(samplesWritten_ * 1000 / sampleRate_);
+
+            // 完成并关闭当前文件
             finalizeWavFile();
             closeCurrentFile();
 
             // 发射完成信号
-            int durationMs = static_cast<int>(samplesWritten_ * 1000 / sampleRate_);
-            QString completedPath = currentFilePath_;
             emit chunkCompleted(completedPath, durationMs);
 
             // 打开新文件
