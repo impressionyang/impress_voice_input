@@ -31,8 +31,11 @@ public:
                int sampleRate = 16000,
                int bufferSizeMs = 20);
 
-    /** @brief 停止采集 */
+    /** @brief 停止采集（保留流，下次 start 更快） */
     void stop();
+
+    /** @brief 停止采集并关闭流（彻底释放资源） */
+    void stopAndClose();
 
     /** @brief 是否正在采集 */
     bool isRunning() const { return running_; }
@@ -51,6 +54,10 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     bool running_ = false;
+    bool streamOpen_ = false;
+    int lastDeviceIndex_ = -1;
+    int lastSampleRate_ = 16000;
+    int lastBufferSizeMs_ = 20;
 };
 
 } // namespace impress

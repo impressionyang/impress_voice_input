@@ -108,7 +108,7 @@ AudioCapture::AudioCapture(QObject* parent)
 }
 
 AudioCapture::~AudioCapture() {
-    stop();
+    stopAndClose();
 }
 
 QStringList AudioCapture::getDeviceList() {
@@ -158,76 +158,91 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         return false;
     }
 
-    // 枚举所有 Host API 用于诊断
-    LOG_DEBUG(kTag, QString("Host API 数量: %1").arg(Pa_GetHostApiCount()));
-    for (int i = 0; i < Pa_GetHostApiCount(); i++) {
-        const PaHostApiInfo* api = Pa_GetHostApiInfo(i);
-        if (api) {
-            LOG_DEBUG(kTag, QString("  Host API #%1: %2 (设备数: %3)")
-                .arg(i).arg(api->name).arg(api->deviceCount));
+    // 如果流已打开且参数匹配，直接启动（跳过耗时的 OpenStream）
+    if (streamOpen_ && impl_->ctx.stream &&
+        deviceIndex == lastDeviceIndex_ &&
+        sampleRate == lastSampleRate_ &&
+        bufferSizeMs == lastBufferSizeMs_) {
+        LOG_DEBUG(kTag, "复用已打开的音频流，跳过 OpenStream");
+    } else {
+        // 关闭旧流（如果存在）
+        if (impl_->ctx.stream) {
+            Pa_CloseStream(impl_->ctx.stream);
+            impl_->ctx.stream = nullptr;
+            streamOpen_ = false;
         }
+
+        // 枚举所有 Host API 用于诊断
+        LOG_DEBUG(kTag, QString("Host API 数量: %1").arg(Pa_GetHostApiCount()));
+        for (int i = 0; i < Pa_GetHostApiCount(); i++) {
+            const PaHostApiInfo* api = Pa_GetHostApiInfo(i);
+            if (api) {
+                LOG_DEBUG(kTag, QString("  Host API #%1: %2 (设备数: %3)")
+                    .arg(i).arg(api->name).arg(api->deviceCount));
+            }
+        }
+
+        // 选择设备
+        int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
+        if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
+            LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)")
+                .arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
+            return false;
+        }
+
+        const PaDeviceInfo* devInfo = Pa_GetDeviceInfo(devIdx);
+        if (!devInfo || devInfo->maxInputChannels <= 0) {
+            LOG_ERROR(kTag, "所选设备不是输入设备");
+            return false;
+        }
+
+        const PaHostApiInfo* hostApi = Pa_GetHostApiInfo(devInfo->hostApi);
+        LOG_INFO(kTag, QString("=== 音频设备诊断 ==="));
+        LOG_INFO(kTag, QString("  设备 #%1: %2").arg(devIdx).arg(devInfo->name));
+        LOG_INFO(kTag, QString("  Host API: %1").arg(hostApi ? hostApi->name : "未知"));
+        LOG_INFO(kTag, QString("  最大输入通道: %1").arg(devInfo->maxInputChannels));
+        LOG_INFO(kTag, QString("  设备默认采样率: %1 Hz").arg(devInfo->defaultSampleRate, 0, 'f', 0));
+        LOG_INFO(kTag, QString("  请求采样率: %1 Hz").arg(sampleRate));
+        LOG_INFO(kTag, QString("  采样格式: paFloat32 | paNonInterleaved"));
+        LOG_INFO(kTag, QString("  请求通道数: 1 (mono)"));
+        LOG_INFO(kTag, QString("  缓冲区: %1ms (%2 帧)").arg(bufferSizeMs)
+            .arg(sampleRate * bufferSizeMs / 1000));
+
+        // 检查是否可能选错设备（名称包含 monitor 的通常是回环设备）
+        QString devName = QString(devInfo->name).toLower();
+        if (devName.contains("monitor") || devName.contains("output")) {
+            LOG_WARNING(kTag, "⚠️ 当前设备名称包含 'monitor' 或 'output'，"
+                "这可能是扬声器回环设备而非麦克风！如果录制的是噪音，请在设置中选择正确的麦克风设备。");
+        }
+
+        PaStreamParameters inputParams{};
+        inputParams.device = devIdx;
+        inputParams.channelCount = 1;
+        inputParams.sampleFormat = paFloat32;
+        inputParams.suggestedLatency = devInfo->defaultHighInputLatency;
+
+        int framesPerBuffer = sampleRate * bufferSizeMs / 1000;
+        if (framesPerBuffer < 256) framesPerBuffer = 256;
+
+        PaError err = Pa_OpenStream(
+            &impl_->ctx.stream, &inputParams, nullptr, sampleRate,
+            static_cast<unsigned long>(framesPerBuffer),
+            paClipOff, paCallback, &impl_->ctx);
+
+        if (err != paNoError || !impl_->ctx.stream) {
+            LOG_ERROR(kTag, QString("打开音频流失败: %1").arg(Pa_GetErrorText(err)));
+            return false;
+        }
+
+        streamOpen_ = true;
+        lastDeviceIndex_ = deviceIndex;
+        lastSampleRate_ = sampleRate;
+        lastBufferSizeMs_ = bufferSizeMs;
     }
 
-    // 选择设备
-    int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
-    if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
-        LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)")
-            .arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
-        return false;
-    }
-
-    const PaDeviceInfo* devInfo = Pa_GetDeviceInfo(devIdx);
-    if (!devInfo || devInfo->maxInputChannels <= 0) {
-        LOG_ERROR(kTag, "所选设备不是输入设备");
-        return false;
-    }
-
-    const PaHostApiInfo* hostApi = Pa_GetHostApiInfo(devInfo->hostApi);
-    LOG_INFO(kTag, QString("=== 音频设备诊断 ==="));
-    LOG_INFO(kTag, QString("  设备 #%1: %2").arg(devIdx).arg(devInfo->name));
-    LOG_INFO(kTag, QString("  Host API: %1").arg(hostApi ? hostApi->name : "未知"));
-    LOG_INFO(kTag, QString("  最大输入通道: %1").arg(devInfo->maxInputChannels));
-    LOG_INFO(kTag, QString("  设备默认采样率: %1 Hz").arg(devInfo->defaultSampleRate, 0, 'f', 0));
-    LOG_INFO(kTag, QString("  请求采样率: %1 Hz").arg(sampleRate));
-    LOG_INFO(kTag, QString("  采样格式: paFloat32 | paNonInterleaved"));
-    LOG_INFO(kTag, QString("  请求通道数: 1 (mono)"));
-    LOG_INFO(kTag, QString("  缓冲区: %1ms (%2 帧)").arg(bufferSizeMs)
-        .arg(sampleRate * bufferSizeMs / 1000));
-
-    // 检查是否可能选错设备（名称包含 monitor 的通常是回环设备）
-    QString devName = QString(devInfo->name).toLower();
-    if (devName.contains("monitor") || devName.contains("output")) {
-        LOG_WARNING(kTag, "⚠️ 当前设备名称包含 'monitor' 或 'output'，"
-            "这可能是扬声器回环设备而非麦克风！如果录制的是噪音，请在设置中选择正确的麦克风设备。");
-    }
-
-    PaStreamParameters inputParams{};
-    inputParams.device = devIdx;
-    inputParams.channelCount = 1;
-    inputParams.sampleFormat = paFloat32;
-    // 不使用 paNonInterleaved：input 指针直接是 float* 数组（interleaved mono），
-    // 回调中可以安全地 static_cast<const float*>(input)
-    // 使用高延迟以避免回调过快
-    inputParams.suggestedLatency = devInfo->defaultHighInputLatency;
-
-    int framesPerBuffer = sampleRate * bufferSizeMs / 1000;
-    if (framesPerBuffer < 256) framesPerBuffer = 256;
-
-    PaError err = Pa_OpenStream(
-        &impl_->ctx.stream, &inputParams, nullptr, sampleRate,
-        static_cast<unsigned long>(framesPerBuffer),
-        paClipOff, paCallback, &impl_->ctx);
-
-    if (err != paNoError || !impl_->ctx.stream) {
-        LOG_ERROR(kTag, QString("打开音频流失败: %1").arg(Pa_GetErrorText(err)));
-        return false;
-    }
-
-    err = Pa_StartStream(impl_->ctx.stream);
+    PaError err = Pa_StartStream(impl_->ctx.stream);
     if (err != paNoError) {
         LOG_ERROR(kTag, QString("启动音频流失败: %1").arg(Pa_GetErrorText(err)));
-        Pa_CloseStream(impl_->ctx.stream);
-        impl_->ctx.stream = nullptr;
         return false;
     }
 
@@ -272,17 +287,33 @@ void AudioCapture::stop() {
         }
     }
 
+    // 只停止流，不关闭 — 下次 start() 可快速复用
     if (impl_->ctx.stream) {
         Pa_StopStream(impl_->ctx.stream);
-        Pa_CloseStream(impl_->ctx.stream);
-        impl_->ctx.stream = nullptr;
+        // 不调用 Pa_CloseStream，保留流以便下次快速启动
     }
-    safePaTerminate();
 #endif
 
     running_ = false;
     emit runningChanged(false);
-    LOG_INFO(kTag, "音频采集已停止");
+    LOG_INFO(kTag, "音频采集已停止（流保留，下次启动更快）");
+}
+
+void AudioCapture::stopAndClose() {
+#ifdef HAVE_PORTAUDIO
+    if (running_ && impl_->ctx.stream) {
+        Pa_StopStream(impl_->ctx.stream);
+    }
+    if (impl_->ctx.stream) {
+        Pa_CloseStream(impl_->ctx.stream);
+        impl_->ctx.stream = nullptr;
+    }
+    safePaTerminate();
+    streamOpen_ = false;
+#endif
+    running_ = false;
+    emit runningChanged(false);
+    LOG_INFO(kTag, "音频采集已停止，流已关闭");
 }
 
 } // namespace impress

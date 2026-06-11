@@ -70,10 +70,17 @@ VoiceInputService::~VoiceInputService() {
 bool VoiceInputService::start() {
     if (running_) return true;
 
-    // 1. 初始化音频采集
+    // 1. 初始化音频采集并预打开音频流（避免按键时 Pa_OpenStream 延迟 3-4s）
     impl_->audioCapture = new AudioCapture(this);
     connect(impl_->audioCapture, &AudioCapture::audioDataReady,
             this, &VoiceInputService::onAudioData);
+
+    int deviceIndex = configManager_->get("audio.input_device").toInt();
+    int sampleRate = configManager_->get("stt.sample_rate").toInt();
+    int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
+    impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
+    impl_->audioCapture->stop();  // 停止但保留流，后续 start() 只需 Pa_StartStream
+    LOG_INFO(kTag, "音频流已预打开，后续录音延迟 <100ms");
 
     // 2. STT 引擎已作为参数传入
 
@@ -117,7 +124,7 @@ void VoiceInputService::stop() {
     cooldownTimer_->stop();
 
     if (impl_->audioCapture) {
-        impl_->audioCapture->stop();
+        impl_->audioCapture->stopAndClose();  // 彻底关闭流
     }
     if (impl_->hotkey) {
         impl_->hotkey->stop();
