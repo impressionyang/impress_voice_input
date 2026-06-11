@@ -5,6 +5,8 @@
 #include <windows.h>
 #include <QAbstractNativeEventFilter>
 #include <QGuiApplication>
+#include <QThread>
+#include <QWidget>
 #endif
 
 static const char* const kTag = "CapsLockVoiceHotkey";
@@ -20,6 +22,7 @@ struct CapsLockVoiceHotkey::Impl {
     bool longPressFired = false;
     bool pollThreadRunning = false;
     void* nativeEventFilter = nullptr;
+    QWidget* hiddenWindow = nullptr;
     static constexpr int kLongPressMs = 1000;
 #endif
 };
@@ -63,14 +66,19 @@ bool CapsLockVoiceHotkey::start() {
     if (active_) return true;
 
 #ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(QGuiApplication::instance()->winId());
-    if (!hwnd) {
-        // Try to get the top-level widget's window handle
-        hwnd = GetForegroundWindow();
+    // 创建隐藏窗口用于接收 WM_HOTKEY 消息
+    if (!impl_->hiddenWindow) {
+        impl_->hiddenWindow = new QWidget();
+        impl_->hiddenWindow->setObjectName("HotkeyReceiver");
+        impl_->hiddenWindow->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+        impl_->hiddenWindow->resize(0, 0);
     }
+    // 确保窗口已创建（show 会创建原生句柄）
+    impl_->hiddenWindow->show();
 
+    HWND hwnd = reinterpret_cast<HWND>(impl_->hiddenWindow->winId());
     if (!hwnd) {
-        emit error("无法获取窗口句柄");
+        emit error("无法创建窗口句柄");
         return false;
     }
 
@@ -146,11 +154,14 @@ void CapsLockVoiceHotkey::stop() {
     }
 
     // 注销快捷键
-    HWND hwnd = reinterpret_cast<HWND>(QGuiApplication::instance()->winId());
-    if (hwnd && impl_->hotkeyId) {
-        UnregisterHotKey(hwnd, impl_->hotkeyId);
-        GlobalDeleteAtom(impl_->hotkeyId);
-        impl_->hotkeyId = 0;
+    if (impl_->hiddenWindow) {
+        HWND hwnd = reinterpret_cast<HWND>(impl_->hiddenWindow->winId());
+        if (hwnd && impl_->hotkeyId) {
+            UnregisterHotKey(hwnd, impl_->hotkeyId);
+            GlobalDeleteAtom(impl_->hotkeyId);
+            impl_->hotkeyId = 0;
+        }
+        impl_->hiddenWindow->hide();
     }
 
     active_ = false;
@@ -208,7 +219,7 @@ void CapsLockVoiceHotkey::onHotkeyEvent(int /*hotkeyId*/) {
             QThread::msleep(50);
         }
         impl_->pollThreadRunning = false;
-    }).start();
+    })->start();
 }
 #endif
 

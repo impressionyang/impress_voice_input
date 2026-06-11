@@ -13,6 +13,7 @@ namespace impress {
 // 预分配缓冲区，避免在实时回调中分配内存
 static constexpr int kMaxBufferSize = 8192;
 
+#ifdef HAVE_PORTAUDIO
 // 全局 PortAudio 初始化状态
 static bool gPaInitialized = false;
 
@@ -33,6 +34,7 @@ static void safePaTerminate() {
         gPaInitialized = false;
     }
 }
+#endif
 
 // 回调上下文：独立于 Impl 的 POD 结构，供静态回调使用
 struct CallbackContext {
@@ -52,13 +54,13 @@ struct AudioCapture::Impl {
     CallbackContext ctx;
 };
 
+#ifdef HAVE_PORTAUDIO
 static int paCallback(const void* input, void* /*output*/,
                       unsigned long frameCount,
                       const PaStreamCallbackTimeInfo* /*timeInfo*/,
                       PaStreamCallbackFlags /*statusFlags*/,
                       void* userData)
 {
-#ifdef HAVE_PORTAUDIO
     auto* ctx = static_cast<CallbackContext*>(userData);
 
     const float* samples = static_cast<const float*>(input);
@@ -88,11 +90,15 @@ static int paCallback(const void* input, void* /*output*/,
     emit ctx->owner->audioDataReady(data, ctx->sampleRate);
 
     return paContinue;
-#else
-    (void)input; (void)frameCount; (void)userData;
-    return 0;
-#endif
 }
+#else
+// 占位回调（无 PortAudio 时不使用）
+static int paCallbackStub(const void*, void*, unsigned long,
+                          const int*, int, void*)
+{
+    return 0;
+}
+#endif
 
 AudioCapture::AudioCapture(QObject* parent)
     : QObject(parent)
@@ -107,8 +113,8 @@ AudioCapture::~AudioCapture() {
 
 QStringList AudioCapture::getDeviceList() {
     QStringList devices;
-    devices << "默认设备";
 #ifdef HAVE_PORTAUDIO
+    devices << "默认设备";
     if (!ensurePaInitialized()) {
         LOG_ERROR(kTag, "PortAudio 初始化失败");
         return devices;
@@ -124,6 +130,9 @@ QStringList AudioCapture::getDeviceList() {
                 .arg(info->defaultSampleRate).arg(hostApiName);
         }
     }
+#else
+    devices << "PortAudio 未启用（占位设备）";
+    LOG_WARNING(kTag, "PortAudio 未编译启用，设备列表为占位");
 #endif
     return devices;
 }
@@ -195,7 +204,9 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
     PaStreamParameters inputParams{};
     inputParams.device = devIdx;
     inputParams.channelCount = 1;
-    inputParams.sampleFormat = paFloat32 | paNonInterleaved;
+    inputParams.sampleFormat = paFloat32;
+    // 不使用 paNonInterleaved：input 指针直接是 float* 数组（interleaved mono），
+    // 回调中可以安全地 static_cast<const float*>(input)
     // 使用高延迟以避免回调过快
     inputParams.suggestedLatency = devInfo->defaultHighInputLatency;
 
@@ -232,8 +243,9 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         .arg(deviceIndex).arg(sampleRate).arg(bufferSizeMs));
     return true;
 #else
-    LOG_ERROR(kTag, "PortAudio 未编译启用");
-    emit error("PortAudio 未编译启用");
+    (void)deviceIndex; (void)sampleRate; (void)bufferSizeMs;
+    LOG_ERROR(kTag, "PortAudio 未编译启用，无法启动采集");
+    emit error("PortAudio 未编译启用，请在 third_party/portaudio/ 中部署后重新编译");
     return false;
 #endif
 }

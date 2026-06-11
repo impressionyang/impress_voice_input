@@ -3,6 +3,7 @@
 #include "sense_voice_tokenizer.h"
 #include "sense_voice_cmvn.h"
 #include "audio_processor.h"
+#include "ort_minimal.h"
 #include "utils/logger.h"
 #include "utils/timer.h"
 
@@ -18,11 +19,6 @@
 #include <QDataStream>
 #include <algorithm>
 #include <cmath>
-
-// ONNX Runtime headers
-#ifdef HAVE_ONNXRUNTIME
-#include <onnxruntime_cxx_api.h>
-#endif
 
 static const char* const kTag = "SenseVoiceEngine";
 
@@ -93,9 +89,9 @@ static int languageToInt(const QString& lang) {
  */
 struct SenseVoiceEngine::Impl {
 #ifdef HAVE_ONNXRUNTIME
-    std::unique_ptr<Ort::Env> env;
-    std::unique_ptr<Ort::SessionOptions> sessionOptions;
-    std::unique_ptr<Ort::Session> session;
+    std::unique_ptr<ort::Env> env;
+    std::unique_ptr<ort::SessionOptions> sessionOptions;
+    std::unique_ptr<ort::Session> session;
 
     std::vector<std::string> inputNames;
     std::vector<std::string> outputNames;
@@ -111,11 +107,11 @@ struct SenseVoiceEngine::Impl {
     {
         QMutexLocker locker(&mutex);
         try {
-            auto envPtr = std::make_unique<Ort::Env>(
+            auto envPtr = std::make_unique<ort::Env>(
                 ORT_LOGGING_LEVEL_WARNING, "impress_sensevoice");
-            auto optionsPtr = std::make_unique<Ort::SessionOptions>();
-            optionsPtr->SetIntraOpNumThreads(numThreads);
-            optionsPtr->SetGraphOptimizationLevel(
+            auto optionsPtr = std::make_unique<ort::SessionOptions>();
+            optionsPtr->setIntraOpNumThreads(numThreads);
+            optionsPtr->setGraphOptimizationLevel(
                 GraphOptimizationLevel::ORT_ENABLE_ALL);
 
             if (device == "gpu") {
@@ -125,14 +121,17 @@ struct SenseVoiceEngine::Impl {
             LOG_INFO(kTag, QString("正在加载 SenseVoice 模型: %1 (线程: %2)")
                 .arg(modelPath).arg(numThreads));
 
-            auto sessionPtr = std::make_unique<Ort::Session>(
+            auto sessionPtr = std::make_unique<ort::Session>(
                 *envPtr,
+#ifdef _WIN32
+                modelPath.toStdWString().c_str(),
+#else
                 modelPath.toUtf8().constData(),
+#endif
                 *optionsPtr);
 
-            Ort::AllocatorWithDefaultOptions allocator;
-            size_t inputCount = sessionPtr->GetInputCount();
-            size_t outputCount = sessionPtr->GetOutputCount();
+            size_t inputCount = sessionPtr->getInputCount();
+            size_t outputCount = sessionPtr->getOutputCount();
 
             LOG_INFO(kTag, QString("模型有 %1 个输入, %2 个输出")
                 .arg(inputCount).arg(outputCount));
@@ -141,15 +140,13 @@ struct SenseVoiceEngine::Impl {
             outputNames.clear();
 
             for (size_t i = 0; i < inputCount; i++) {
-                auto namePtr = sessionPtr->GetInputNameAllocated(i, allocator);
-                inputNames.emplace_back(namePtr.get());
-                LOG_DEBUG(kTag, QString("输入 #%1: %2").arg(i).arg(namePtr.get()));
+                inputNames.emplace_back(sessionPtr->getInputName(i));
+                LOG_DEBUG(kTag, QString("输入 #%1: %2").arg(i).arg(QString::fromStdString(inputNames.back())));
             }
 
             for (size_t i = 0; i < outputCount; i++) {
-                auto namePtr = sessionPtr->GetOutputNameAllocated(i, allocator);
-                outputNames.emplace_back(namePtr.get());
-                LOG_DEBUG(kTag, QString("输出 #%1: %2").arg(i).arg(namePtr.get()));
+                outputNames.emplace_back(sessionPtr->getOutputName(i));
+                LOG_DEBUG(kTag, QString("输出 #%1: %2").arg(i).arg(QString::fromStdString(outputNames.back())));
             }
 
             env = std::move(envPtr);
@@ -174,7 +171,7 @@ struct SenseVoiceEngine::Impl {
 
             LOG_INFO(kTag, QString("SenseVoice 模型加载成功: %1").arg(modelPath));
             return true;
-        } catch (const Ort::Exception& e) {
+        } catch (const ort::Exception& e) {
             errorMsg = QString("ONNX 异常: %1").arg(e.what());
             LOG_ERROR(kTag, errorMsg);
             return false;
@@ -183,6 +180,21 @@ struct SenseVoiceEngine::Impl {
             LOG_ERROR(kTag, errorMsg);
             return false;
         }
+    }
+
+    QMutex mutex;
+#else
+    // 占位实现：无 ONNX Runtime 时仅提供基本结构
+    bool loadInWorker(const QString& /*modelPath*/,
+                      const QString& /*tokensPath*/,
+                      const QString& /*device*/,
+                      int /*numThreads*/,
+                      QString& errorMsg)
+    {
+        errorMsg = "ONNX Runtime 未安装，推理功能不可用。"
+                   "请在 third_party/onnxruntime/ 中部署 ONNX Runtime 后重新编译。";
+        LOG_ERROR(kTag, errorMsg);
+        return false;
     }
 
     QMutex mutex;
@@ -206,11 +218,13 @@ bool SenseVoiceEngine::loadModelSync(const QString& modelPath,
     if (loaded_) {
         LOG_WARNING(kTag, "模型已加载，先卸载再加载");
         // 内联清理，避免调用 unloadModel() 导致 mutex 递归死锁
+#ifdef HAVE_ONNXRUNTIME
         impl_->session.reset();
         impl_->sessionOptions.reset();
         impl_->env.reset();
         impl_->features.reset();
         impl_->tokenizer = SenseVoiceTokenizer();
+#endif
         loaded_ = false;
     }
 
@@ -235,11 +249,13 @@ void SenseVoiceEngine::loadModelAsync(const QString& modelPath,
     if (loaded_) {
         LOG_WARNING(kTag, "模型已加载，先卸载再加载");
         // 内联清理，避免调用 unloadModel() 导致 mutex 递归死锁
+#ifdef HAVE_ONNXRUNTIME
         impl_->session.reset();
         impl_->sessionOptions.reset();
         impl_->env.reset();
         impl_->features.reset();
         impl_->tokenizer = SenseVoiceTokenizer();
+#endif
         loaded_ = false;
     }
 
@@ -417,7 +433,7 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
 
         // 输入: x, x_length, language, text_norm
         int64_t xShape[] = {1, numFrames, kLFROutputDim};
-        auto memInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+        auto memInfo = ort::MemoryInfo::createCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
         int32_t xLengthVal = numFrames;
         int64_t xLengthShape[] = {1};
@@ -429,14 +445,14 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
         int32_t textNormVal = kTextNormWithITN;
         int64_t textNormShape[] = {1};
 
-        std::vector<Ort::Value> inputTensors;
-        inputTensors.push_back(Ort::Value::CreateTensor<float>(
+        std::vector<ort::Value> inputTensors;
+        inputTensors.push_back(ort::Value::createTensor(
             memInfo, lfrFeatures.data(), lfrFeatures.size(), xShape, 3));
-        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
+        inputTensors.push_back(ort::Value::createTensor(
             memInfo, &xLengthVal, 1, xLengthShape, 1));
-        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
+        inputTensors.push_back(ort::Value::createTensor(
             memInfo, &langVal, 1, langShape, 1));
-        inputTensors.push_back(Ort::Value::CreateTensor<int32_t>(
+        inputTensors.push_back(ort::Value::createTensor(
             memInfo, &textNormVal, 1, textNormShape, 1));
 
         // 4. 运行推理
@@ -446,8 +462,10 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
         std::vector<const char*> outputNamePtrs;
         for (auto& name : impl_->outputNames) outputNamePtrs.push_back(name.c_str());
 
-        auto outputTensors = impl_->session->Run(
-            Ort::RunOptions{nullptr},
+        ort::RunOptions runOptions;
+        auto outputTensors = ort::run(
+            *impl_->session,
+            runOptions,
             inputNamePtrs.data(), inputTensors.data(), inputTensors.size(),
             outputNamePtrs.data(), outputNamePtrs.size());
 
@@ -455,8 +473,8 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
 
         // 5. 解析输出 logits [1, seq_len, 25055]
         auto& outputTensor = outputTensors[0];
-        auto shape = outputTensor.GetTensorTypeAndShapeInfo().GetShape();
-        const float* logitsData = outputTensor.GetTensorData<float>();
+        auto shape = outputTensor.getShape();
+        const float* logitsData = outputTensor.getTensorData();
 
         LOG_DEBUG(kTag, QString("输出维度: [%1, %2, %3]")
             .arg(shape[0]).arg(shape[1]).arg(shape[2]));

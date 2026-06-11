@@ -49,6 +49,7 @@ signals:
     void error(const QString& message);
 
     /** @brief 处理 WM_HOTKEY 事件（由原生事件过滤器调用） */
+public:
     void onHotkeyEvent(int hotkeyId);
 
 private:

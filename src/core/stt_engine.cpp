@@ -2,6 +2,7 @@
 #include "mel_spectrogram.h"
 #include "whisper_tokenizer.h"
 #include "audio_processor.h"
+#include "ort_minimal.h"
 #include "utils/logger.h"
 #include "utils/timer.h"
 
@@ -14,11 +15,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-
-// ONNX Runtime headers
-#ifdef HAVE_ONNXRUNTIME
-#include <onnxruntime_cxx_api.h>
-#endif
 
 static const char* const kTag = "STTEngine";
 
@@ -33,9 +29,9 @@ namespace impress {
  */
 struct STTEngine::Impl {
 #ifdef HAVE_ONNXRUNTIME
-    std::unique_ptr<Ort::Env> env;
-    std::unique_ptr<Ort::SessionOptions> sessionOptions;
-    std::unique_ptr<Ort::Session> session;
+    std::unique_ptr<ort::Env> env;
+    std::unique_ptr<ort::SessionOptions> sessionOptions;
+    std::unique_ptr<ort::Session> session;
 
     std::vector<std::string> inputNames;
     std::vector<std::string> outputNames;
@@ -50,11 +46,11 @@ struct STTEngine::Impl {
     {
         QMutexLocker locker(&mutex);
         try {
-            auto envPtr = std::make_unique<Ort::Env>(
+            auto envPtr = std::make_unique<ort::Env>(
                 ORT_LOGGING_LEVEL_WARNING, "impress_voice");
-            auto optionsPtr = std::make_unique<Ort::SessionOptions>();
-            optionsPtr->SetIntraOpNumThreads(numThreads);
-            optionsPtr->SetGraphOptimizationLevel(
+            auto optionsPtr = std::make_unique<ort::SessionOptions>();
+            optionsPtr->setIntraOpNumThreads(numThreads);
+            optionsPtr->setGraphOptimizationLevel(
                 GraphOptimizationLevel::ORT_ENABLE_ALL);
 
             if (device == "gpu") {
@@ -63,14 +59,17 @@ struct STTEngine::Impl {
 
             LOG_INFO(kTag, QString("正在加载模型: %1 (线程: %2)").arg(modelPath).arg(numThreads));
 
-            auto sessionPtr = std::make_unique<Ort::Session>(
+            auto sessionPtr = std::make_unique<ort::Session>(
                 *envPtr,
+#ifdef _WIN32
+                modelPath.toStdWString().c_str(),
+#else
                 modelPath.toUtf8().constData(),
+#endif
                 *optionsPtr);
 
-            Ort::AllocatorWithDefaultOptions allocator;
-            size_t inputCount = sessionPtr->GetInputCount();
-            size_t outputCount = sessionPtr->GetOutputCount();
+            size_t inputCount = sessionPtr->getInputCount();
+            size_t outputCount = sessionPtr->getOutputCount();
 
             LOG_INFO(kTag, QString("模型有 %1 个输入, %2 个输出")
                 .arg(inputCount).arg(outputCount));
@@ -79,15 +78,13 @@ struct STTEngine::Impl {
             outputNames.clear();
 
             for (size_t i = 0; i < inputCount; i++) {
-                auto namePtr = sessionPtr->GetInputNameAllocated(i, allocator);
-                inputNames.emplace_back(namePtr.get());
-                LOG_DEBUG(kTag, QString("输入 #%1: %2").arg(i).arg(namePtr.get()));
+                inputNames.emplace_back(sessionPtr->getInputName(i));
+                LOG_DEBUG(kTag, QString("输入 #%1: %2").arg(i).arg(QString::fromStdString(inputNames.back())));
             }
 
             for (size_t i = 0; i < outputCount; i++) {
-                auto namePtr = sessionPtr->GetOutputNameAllocated(i, allocator);
-                outputNames.emplace_back(namePtr.get());
-                LOG_DEBUG(kTag, QString("输出 #%1: %2").arg(i).arg(namePtr.get()));
+                outputNames.emplace_back(sessionPtr->getOutputName(i));
+                LOG_DEBUG(kTag, QString("输出 #%1: %2").arg(i).arg(QString::fromStdString(outputNames.back())));
             }
 
             env = std::move(envPtr);
@@ -106,7 +103,7 @@ struct STTEngine::Impl {
 
             LOG_INFO(kTag, QString("模型加载成功: %1").arg(modelPath));
             return true;
-        } catch (const Ort::Exception& e) {
+        } catch (const ort::Exception& e) {
             errorMsg = QString("ONNX 异常: %1").arg(e.what());
             LOG_ERROR(kTag, errorMsg);
             return false;
@@ -115,6 +112,20 @@ struct STTEngine::Impl {
             LOG_ERROR(kTag, errorMsg);
             return false;
         }
+    }
+
+    QMutex mutex;
+#else
+    // 占位实现：无 ONNX Runtime 时仅提供基本结构
+    bool loadInWorker(const QString& /*modelPath*/,
+                      const QString& /*device*/,
+                      int /*numThreads*/,
+                      QString& errorMsg)
+    {
+        errorMsg = "ONNX Runtime 未安装，推理功能不可用。"
+                   "请在 third_party/onnxruntime/ 中部署 ONNX Runtime 后重新编译。";
+        LOG_ERROR(kTag, errorMsg);
+        return false;
     }
 
     QMutex mutex;
@@ -276,9 +287,10 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
         QMutexLocker locker(&impl_->mutex);
 
         int64_t melShape[] = {1, kMelBins, static_cast<int64_t>(nFrames)};
-        auto memInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-        std::vector<Ort::Value> inputTensors;
-        inputTensors.push_back(Ort::Value::CreateTensor<float>(
+        auto memInfo = ort::MemoryInfo::createCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+
+        std::vector<ort::Value> inputTensors;
+        inputTensors.push_back(ort::Value::createTensor(
             memInfo, melSpec.data(), melSpec.size(), melShape, 3));
 
         std::vector<const char*> inputNamePtrs;
@@ -286,8 +298,10 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
         std::vector<const char*> outputNamePtrs;
         for (auto& name : impl_->outputNames) outputNamePtrs.push_back(name.c_str());
 
-        auto outputTensors = impl_->session->Run(
-            Ort::RunOptions{nullptr},
+        ort::RunOptions runOptions;
+        auto outputTensors = ort::run(
+            *impl_->session,
+            runOptions,
             inputNamePtrs.data(), inputTensors.data(), inputTensors.size(),
             outputNamePtrs.data(), impl_->outputNames.size());
 
@@ -295,8 +309,8 @@ RecognitionResult STTEngine::infer(const std::vector<float>& samples,
 
         // 4. 解析输出
         auto& outputTensor = outputTensors[0];
-        auto shape = outputTensor.GetTensorTypeAndShapeInfo().GetShape();
-        const float* outputData = outputTensor.GetTensorMutableData<float>();
+        auto shape = outputTensor.getShape();
+        const float* outputData = outputTensor.getTensorData();
 
         LOG_DEBUG(kTag, QString("输出维度: %1").arg(shape.size()));
         for (size_t i = 0; i < shape.size(); i++) {

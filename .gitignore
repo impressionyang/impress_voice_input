@@ -64,3 +64,12 @@ configs/config.json
 
 # 日志
 *.log
+
+# 构建目录（所有平台）
+build-win/
+build_linux/
+build_win/
+dist/
+
+# Windows 第三方依赖（ONNX Runtime Win x64 预编译二进制）
+third_party/onnxruntime-win-x64/

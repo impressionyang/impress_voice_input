@@ -55,6 +55,7 @@ set(SOURCES
     # Core (平台无关)
     src/core/stt_engine.cpp
     src/core/sense_voice_engine.cpp
+    src/core/ort_minimal.cpp
     src/core/sense_voice_features.cpp
     src/core/sense_voice_tokenizer.cpp
     src/core/mel_spectrogram.cpp
@@ -165,6 +166,36 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
+
+# ============================================================================
+# Windows DLL 复制（交叉编译时自动拷贝到输出目录）
+# ============================================================================
+if(WIN32)
+    if(ONNXRUNTIME_DLL)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_DLL}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            COMMENT "拷贝 onnxruntime.dll 到输出目录"
+        )
+    endif()
+    if(ONNXRUNTIME_PROVIDERS_DLL)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_PROVIDERS_DLL}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            COMMENT "拷贝 onnxruntime_providers_shared.dll 到输出目录"
+        )
+    endif()
+    if(PORTAUDIO_DLL)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${PORTAUDIO_DLL}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+            COMMENT "拷贝 libportaudio.dll 到输出目录"
+        )
+    endif()
+endif()
 
 # ============================================================================
 # 资源文件

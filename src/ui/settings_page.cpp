@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QScrollArea>
 
 static const char* const kTag = "SettingsPage";
 
@@ -34,10 +35,24 @@ SettingsPage::~SettingsPage() = default;
 
 void SettingsPage::setupUI() {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+
+    // ---- 可滚动内容区域 ----
+    auto* scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+
+    auto* contentWidget = new QWidget(scrollArea);
+    auto* contentLayout = new QVBoxLayout(contentWidget);
+    contentLayout->setContentsMargins(12, 8, 12, 8);
+    contentLayout->setSpacing(12);
 
     // STT 设置
-    auto* sttGroup = new QGroupBox("STT 推理设置", this);
+    auto* sttGroup = new QGroupBox("STT 推理设置", contentWidget);
     auto* sttLayout = new QFormLayout(sttGroup);
+    sttLayout->setSpacing(8);
+    sttLayout->setContentsMargins(10, 12, 10, 12);
 
     auto* modelRow = new QHBoxLayout();
     modelPathEdit_ = new QLineEdit(this);
@@ -109,11 +124,13 @@ void SettingsPage::setupUI() {
     temperatureSpin_->setValue(0.0);
     sttLayout->addRow("温度 (Temperature):", temperatureSpin_);
 
-    mainLayout->addWidget(sttGroup);
+    contentLayout->addWidget(sttGroup);
 
     // 音频设置
-    auto* audioGroup = new QGroupBox("音频设置", this);
+    auto* audioGroup = new QGroupBox("音频设置", contentWidget);
     auto* audioLayout = new QFormLayout(audioGroup);
+    audioLayout->setSpacing(8);
+    audioLayout->setContentsMargins(10, 12, 10, 12);
 
     // 音频输入设备选择器
     audioDeviceCombo_ = new QComboBox(this);
@@ -150,11 +167,13 @@ void SettingsPage::setupUI() {
     paddingSpin_->setSuffix(" ms");
     audioLayout->addRow("块间重叠:", paddingSpin_);
 
-    mainLayout->addWidget(audioGroup);
+    contentLayout->addWidget(audioGroup);
 
     // UI 设置
-    auto* uiGroup = new QGroupBox("界面设置", this);
+    auto* uiGroup = new QGroupBox("界面设置", contentWidget);
     auto* uiLayout = new QFormLayout(uiGroup);
+    uiLayout->setSpacing(8);
+    uiLayout->setContentsMargins(10, 12, 10, 12);
 
     themeCombo_ = new QComboBox(this);
     themeCombo_->addItems({"light", "dark"});
@@ -173,26 +192,32 @@ void SettingsPage::setupUI() {
     showConfidenceCheck_->setChecked(true);
     uiLayout->addRow("置信度显示:", showConfidenceCheck_);
 
-    mainLayout->addWidget(uiGroup);
+    contentLayout->addWidget(uiGroup);
+    contentLayout->addStretch();
 
-    // 操作按钮
-    auto* btnLayout = new QHBoxLayout();
-    auto* saveBtn = new QPushButton("保存配置", this);
+    scrollArea->setWidget(contentWidget);
+    mainLayout->addWidget(scrollArea);
+
+    // ---- 底部操作按钮（固定不滚动） ----
+    auto* btnBar = new QWidget(this);
+    auto* btnLayout = new QHBoxLayout(btnBar);
+    btnLayout->setContentsMargins(12, 4, 12, 8);
+
+    auto* saveBtn = new QPushButton("保存配置", btnBar);
     saveBtn->setStyleSheet("QPushButton { font-weight: bold; padding: 8px 16px; }");
     connect(saveBtn, &QPushButton::clicked, this, &SettingsPage::onSaveConfig);
     btnLayout->addWidget(saveBtn);
 
-    auto* resetBtn = new QPushButton("恢复默认", this);
+    auto* resetBtn = new QPushButton("恢复默认", btnBar);
     connect(resetBtn, &QPushButton::clicked, this, &SettingsPage::onResetConfig);
     btnLayout->addWidget(resetBtn);
     btnLayout->addStretch();
 
-    statusLabel_ = new QLabel("配置未修改", this);
+    statusLabel_ = new QLabel("配置未修改", btnBar);
     statusLabel_->setStyleSheet("color: gray;");
     btnLayout->addWidget(statusLabel_);
 
-    mainLayout->addLayout(btnLayout);
-    mainLayout->addStretch();
+    mainLayout->addWidget(btnBar);
 }
 
 void SettingsPage::loadFromConfig() {
