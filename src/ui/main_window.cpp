@@ -126,10 +126,11 @@ void MainWindow::setupTrayIcon() {
     trayIcon_ = new QSystemTrayIcon(this);
     trayIcon_->setContextMenu(trayMenu_);
 
-    // 使用应用窗口图标作为托盘图标，避免自定义绘制导致的黑色方块
-    trayIcon_->setIcon(windowIcon().isNull() ?
-        style()->standardIcon(QStyle::SP_ComputerIcon) :
-        windowIcon());
+    // 默认状态：停止图标（SP_MediaStop）
+    idleIcon_ = style()->standardIcon(QStyle::SP_MediaStop);
+    activeIcon_ = style()->standardIcon(QStyle::SP_MediaPlay);
+
+    trayIcon_->setIcon(idleIcon_);
     trayIcon_->setToolTip("Impress Voice Input - 语音输入就绪");
     trayIcon_->show();
 
@@ -148,8 +149,12 @@ void MainWindow::setupTrayIcon() {
 void MainWindow::updateTrayIcon(const QString& status) {
     if (!trayIcon_) return;
 
-    // 根据状态设置 tooltip，图标保持统一的应用图标
-    // 避免使用自定义 QPixmap（在某些平台/主题下会显示为黑色方块）
+    // 录音/识别 → 播放图标，就绪/停止 → 停止图标
+    if (status.contains("正在录音") || status.contains("正在识别")) {
+        trayIcon_->setIcon(activeIcon_);
+    } else {
+        trayIcon_->setIcon(idleIcon_);
+    }
     trayIcon_->setToolTip(QString("Impress Voice Input - %1").arg(status));
 }
 

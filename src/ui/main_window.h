@@ -56,6 +56,8 @@ private:
     QLabel* modelStatusLabel_;
     QSystemTrayIcon* trayIcon_ = nullptr;
     QMenu* trayMenu_ = nullptr;
+    QIcon idleIcon_;   // SP_MediaStop — 就绪/停止
+    QIcon activeIcon_; // SP_MediaPlay — 录音/识别
 };
 
 } // namespace impress
