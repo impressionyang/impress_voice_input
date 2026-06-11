@@ -45,6 +45,7 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
         // 长按超时仍未松开 → 确认为长按录音
         if (!longPressDetected_) {
             longPressDetected_ = true;
+            capsResetDone_ = true;
             // 立即复位 CapsLock，不等用户松开
             simulateCapsLock();
             emit statusChanged("正在录音...");
@@ -113,12 +114,19 @@ void VoiceInputService::stop() {
     running_ = false;
     recording_ = false;
     longPressDetected_ = false;
+    capsResetDone_ = false;
     audioBuffer_.clear();
 
     LOG_INFO(kTag, "语音输入服务已停止");
 }
 
 void VoiceInputService::onHotkeyActivated() {
+    // CapsLock 已复位，用户仍按住键 → 忽略重复触发
+    if (capsResetDone_) {
+        LOG_DEBUG(kTag, "忽略重复的 Activated（CapsLock 已复位，等待松开）");
+        return;
+    }
+
     LOG_DEBUG(kTag, "快捷键激活（按下）");
     recording_ = true;
     longPressDetected_ = false;
@@ -157,6 +165,7 @@ void VoiceInputService::onHotkeyDeactivated() {
     }
 
     longPressDetected_ = false;
+    capsResetDone_ = false;
 }
 
 void VoiceInputService::onAudioData(const std::vector<float>& samples, int sampleRate) {

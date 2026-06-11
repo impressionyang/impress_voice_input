@@ -67,6 +67,7 @@ private:
     bool running_ = false;
     bool recording_ = false;
     bool longPressDetected_ = false;
+    bool capsResetDone_ = false;  // CapsLock 复位后忽略重复 Activated
     int longPressThreshold_ = 1000;
 
     std::vector<float> audioBuffer_;
