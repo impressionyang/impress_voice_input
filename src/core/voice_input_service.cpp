@@ -19,6 +19,8 @@
 #include <QThread>
 #include <QTimer>
 #include <QtConcurrent>
+#include <QElapsedTimer>
+#include <algorithm>
 
 static const char* const kTag = "VoiceInputService";
 
@@ -48,6 +50,22 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
             state_ = Recording;
             audioBuffer_.clear(); // 清除预录音期间的静音
             emit statusChanged("正在录音...");
+
+            // 统计按键到录音延迟
+            if (latencyTracking_ && hotkeyLatencyTimer_.isValid()) {
+                qint64 latencyMs = hotkeyLatencyTimer_.elapsed();
+                totalKeyCount_++;
+                totalLatencyMs_ += latencyMs;
+                maxLatencyMs_ = std::max(maxLatencyMs_, (double)latencyMs);
+                minLatencyMs_ = std::min(minLatencyMs_, (double)latencyMs);
+                double avgMs = totalLatencyMs_ / totalKeyCount_;
+                LOG_INFO(kTag, QString("⏱ 按键→录音延迟: %1ms (平均: %2ms, 最小: %3ms, 最大: %4ms, 累计: %5次)")
+                    .arg(latencyMs).arg(avgMs, 0, 'f', 0)
+                    .arg(minLatencyMs_, 0, 'f', 0).arg(maxLatencyMs_, 0, 'f', 0)
+                    .arg(totalKeyCount_));
+                latencyTracking_ = false;
+            }
+
             LOG_DEBUG(kTag, "PreRecording → Recording (灯保持 ON，开始录音)");
         }
     });
@@ -155,6 +173,10 @@ void VoiceInputService::onHotkeyActivated() {
     state_ = PreRecording;
     recording_ = true;
     audioBuffer_.clear();
+
+    // 启动延迟统计
+    hotkeyLatencyTimer_.start();
+    latencyTracking_ = true;
 
     int deviceIndex = configManager_->get("audio.input_device").toInt();
     int sampleRate = configManager_->get("stt.sample_rate").toInt();

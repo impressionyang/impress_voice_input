@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <vector>
 #include <memory>
 
@@ -79,6 +80,15 @@ private:
 
     QTimer* longPressTimer_ = nullptr;
     QTimer* cooldownTimer_ = nullptr;
+
+    // 按键到录音延迟统计
+    QElapsedTimer hotkeyLatencyTimer_;
+    bool latencyTracking_ = false;
+
+    int totalKeyCount_ = 0;
+    double totalLatencyMs_ = 0;
+    double maxLatencyMs_ = 0;
+    double minLatencyMs_ = 9999;
 
     void startRecording();
     void stopRecordingAndTranscribe();
