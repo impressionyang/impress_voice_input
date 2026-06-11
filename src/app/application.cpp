@@ -11,7 +11,8 @@ namespace impress {
 Application::Application(int& argc, char** argv)
     : QApplication(argc, argv)
 {
-    LOG_INFO(kTag, "Impress Voice Input 启动");
+    LOG_INFO(kTag, QString("Impress Voice Input v%1 启动").arg(applicationVersion()));
+    LOG_INFO(kTag, QString("编译时间: %1 %2").arg(__DATE__).arg(__TIME__));
 
     configManager_ = std::make_unique<ConfigManager>(this);
     configManager_->loadDefaults();

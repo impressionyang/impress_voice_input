@@ -18,6 +18,8 @@
 #include <QSystemTrayIcon>
 #include <QPainter>
 #include <QIcon>
+#include <QApplication>
+#include <QCloseEvent>
 
 static const char* const kTag = "MainWindow";
 
@@ -109,6 +111,9 @@ void MainWindow::setupTrayIcon() {
         return;
     }
 
+    // 防止关闭主窗口时应用退出，保持托盘图标运行
+    qApp->setQuitOnLastWindowClosed(false);
+
     trayMenu_ = new QMenu(this);
     auto* showAction = trayMenu_->addAction("显示主窗口");
     connect(showAction, &QAction::triggered, this, [this]() {
@@ -118,13 +123,19 @@ void MainWindow::setupTrayIcon() {
     });
     trayMenu_->addSeparator();
     auto* exitAction = trayMenu_->addAction("退出");
-    connect(exitAction, &QAction::triggered, this, &MainWindow::close);
+    connect(exitAction, &QAction::triggered, this, [this]() {
+        if (voiceInputService_) {
+            voiceInputService_->stop();
+        }
+        qApp->quit();
+    });
 
     trayIcon_ = new QSystemTrayIcon(this);
     trayIcon_->setContextMenu(trayMenu_);
 
-    // 初始状态
+    // 先设置图标，再显示托盘
     updateTrayIcon("语音输入就绪");
+    trayIcon_->show();
 
     // 双击托盘显示窗口
     connect(trayIcon_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
@@ -135,8 +146,6 @@ void MainWindow::setupTrayIcon() {
         }
     });
 
-    trayIcon_->show();
-
     // 发送通知气泡，让用户注意到托盘图标
     trayIcon_->showMessage(
         "Impress Voice Input",
@@ -145,37 +154,31 @@ void MainWindow::setupTrayIcon() {
         3000
     );
 
-    LOG_INFO(kTag, QString("系统托盘图标已创建 (可用: %1)").arg(QSystemTrayIcon::isSystemTrayAvailable()));
+    LOG_INFO(kTag, QString("系统托盘图标已创建 (可用: %1, 已设置 quitOnLastWindowClosed=false)")
+        .arg(QSystemTrayIcon::isSystemTrayAvailable()));
 }
 
 void MainWindow::updateTrayIcon(const QString& status) {
     if (!trayIcon_) return;
 
     QColor color;
-    QString symbol;
 
-    // 根据状态文字匹配图标
+    // 根据状态文字匹配图标颜色
     if (status.contains("正在录音")) {
         color = QColor("#e74c3c");  // 红色 - 录音中
-        symbol = "●";
     } else if (status.contains("正在识别")) {
         color = QColor("#f39c12");  // 橙色 - 识别中
-        symbol = "◉";
     } else if (status.contains("等待长按") || status.contains("PreRecording")) {
         color = QColor("#f1c40f");  // 黄色 - 预录音
-        symbol = "○";
     } else if (status.contains("已启动") || status.contains("就绪")) {
         color = QColor("#27ae60");  // 绿色 - 就绪
-        symbol = "○";
     } else if (status.contains("已关闭") || status.contains("停止")) {
         color = QColor("#95a5a6");  // 灰色 - 停止
-        symbol = "○";
     } else {
         color = QColor("#3498db");  // 蓝色 - 其他
-        symbol = "○";
     }
 
-    QPixmap pm = createTrayIcon(color, symbol);
+    QPixmap pm = createTrayIcon(color);
     QIcon icon(pm);
     if (icon.isNull()) {
         LOG_ERROR(kTag, "托盘图标创建失败");
@@ -184,51 +187,24 @@ void MainWindow::updateTrayIcon(const QString& status) {
 
     trayIcon_->setIcon(icon);
     trayIcon_->setToolTip(QString("Impress Voice Input - %1").arg(status));
-
-    // 确保托盘图标可见
-    if (!trayIcon_->isVisible()) {
-        trayIcon_->show();
-    }
 }
 
-QPixmap MainWindow::createTrayIcon(const QColor& color, const QString& symbol) {
-    const int size = 32;
-    QPixmap pixmap(size, size);
-    // 使用不透明背景，Windows 托盘对透明图标支持有限
-    pixmap.fill(QColor(40, 40, 45));
+QPixmap MainWindow::createTrayIcon(const QColor& color) {
+    // 使用 16x16 标准托盘图标尺寸
+    const int size = 16;
+    QImage image(size, size, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
 
-    QPainter painter(&pixmap);
+    QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // 外圆
+    // 绘制实心彩色圆
     painter.setBrush(color);
     painter.setPen(Qt::NoPen);
-    int margin = 4;
+    int margin = 1;
     painter.drawEllipse(margin, margin, size - 2 * margin, size - 2 * margin);
 
-    // 内部符号
-    if (symbol == "●") {
-        // 录音中：内部白色实心圆
-        painter.setBrush(QColor("#ffffff"));
-        int innerSize = 8;
-        int offset = (size - innerSize) / 2;
-        painter.drawEllipse(offset, offset, innerSize, innerSize);
-    } else if (symbol == "◉") {
-        // 识别中：白色环形
-        painter.setPen(QPen(QColor("#ffffff"), 3));
-        painter.setBrush(Qt::NoBrush);
-        int innerSize = 12;
-        int offset = (size - innerSize) / 2;
-        painter.drawEllipse(offset, offset, innerSize, innerSize);
-    } else {
-        // 空心：小白点
-        painter.setBrush(QColor("#ffffff"));
-        int dotSize = 6;
-        int offset = (size - dotSize) / 2;
-        painter.drawEllipse(offset, offset, dotSize, dotSize);
-    }
-
-    return pixmap;
+    return QPixmap::fromImage(image);
 }
 
 void MainWindow::setupMenuBar() {
@@ -242,7 +218,15 @@ void MainWindow::setupMenuBar() {
 
     auto* exitAction = fileMenu->addAction("退出");
     exitAction->setShortcut(QKeySequence("Ctrl+Q"));
-    connect(exitAction, &QAction::triggered, this, &MainWindow::close);
+    connect(exitAction, &QAction::triggered, this, [this]() {
+        if (trayIcon_) {
+            trayIcon_->hide();
+        }
+        if (voiceInputService_) {
+            voiceInputService_->stop();
+        }
+        qApp->quit();
+    });
 
     // 帮助菜单
     auto* helpMenu = menuBar()->addMenu("帮助");
@@ -271,8 +255,8 @@ void MainWindow::closeEvent(QCloseEvent* event) {
     if (voiceInputService_) {
         voiceInputService_->stop();
     }
-    LOG_INFO(kTag, "主窗口关闭");
-    QMainWindow::closeEvent(event);
+    LOG_INFO(kTag, "主窗口关闭 (应用保持运行，托盘图标可见)");
+    event->ignore();  // 不关闭应用，只隐藏窗口
 }
 
 void MainWindow::updateModelStatus() {

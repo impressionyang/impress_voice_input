@@ -40,7 +40,7 @@ private:
     void setupStatusBar(SenseVoiceEngine* sttEngine);
     void setupTrayIcon();
     void updateTrayIcon(const QString& status);
-    QPixmap createTrayIcon(const QColor& color, const QString& symbol);
+    QPixmap createTrayIcon(const QColor& color);
     void loadStyleSheet();
     void onVoiceInputConfigChanged();
     void updateModelStatus();
