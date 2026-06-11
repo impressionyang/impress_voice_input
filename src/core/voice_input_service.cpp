@@ -45,6 +45,8 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
         // 长按超时仍未松开 → 确认为长按录音
         if (!longPressDetected_) {
             longPressDetected_ = true;
+            // 立即复位 CapsLock，不等用户松开
+            simulateCapsLock();
             emit statusChanged("正在录音...");
         }
     });
@@ -150,9 +152,7 @@ void VoiceInputService::onHotkeyDeactivated() {
         simulateCapsLock();
         emit statusChanged("短按：切换 CapsLock");
     } else {
-        // 长按 → 先恢复 CapsLock 状态，再开始识别
-        // 这样识别结果注入时 CapsLock 已恢复原始状态
-        simulateCapsLock();
+        // 长按 → CapsLock 已在长按阈值时复位，松开后直接开始识别
         stopRecordingAndTranscribe();
     }
 

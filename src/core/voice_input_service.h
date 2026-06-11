@@ -19,10 +19,10 @@ class ConfigManager;
  *
  * 协调全局快捷键、音频采集、STT 推理和文本注入。
  * 状态机：
- * 1. 空闲 → 按下快捷键 → 开始录音
- * 2. 长按超过 1 秒 → 开始正式录音（清除之前的静音段）
- * 3. 松开快捷键 → 停止录音 → 推理 → 注入文本
- * 4. 短按（< 1 秒）→ 注入 CapsLock 按键（切换大小写）
+ * 1. 按下 CapsLock → 开始预录音
+ * 2. 长按超过阈值（默认 3s）→ 立即复位 CapsLock，正式录音
+ * 3. 松开 CapsLock → 停止录音 → 推理 → 注入文本
+ * 4. 短按（< 阈值）→ 注入 CapsLock 按键（切换大小写）
  */
 class VoiceInputService : public QObject {
     Q_OBJECT
@@ -44,7 +44,7 @@ public:
     /** @brief 是否正在录音 */
     bool isRecording() const { return recording_; }
 
-    /** @brief 长按阈值（毫秒），默认 1000ms */
+    /** @brief 长按阈值（毫秒），默认 3000ms */
     void setLongPressThreshold(int ms) { longPressThreshold_ = ms; }
     int longPressThreshold() const { return longPressThreshold_; }
 
