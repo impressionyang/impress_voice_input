@@ -33,13 +33,19 @@ echo "============================================"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-echo "[1/3] 配置 CMake..."
+echo "[1/4] 强制更新编译时间戳..."
+touch "${SCRIPT_DIR}/src/app/application.cpp"
+
+echo "[2/4] 配置 CMake..."
 cmake .. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
 
-echo "[2/3] 编译..."
+echo "[2/4] 配置 CMake..."
+cmake .. -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+
+echo "[3/4] 编译..."
 cmake --build . -j$(nproc)
 
-echo "[3/3] 构建完成"
+echo "[4/4] 构建完成"
 echo ""
 echo "可执行文件: ${BUILD_DIR}/impress_voice_input"
 echo ""
