@@ -40,14 +40,18 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
 {
     impl_->sttEngine = sttEngine;
 
-    // 长按确认定时器（1s）
+    // 1s 定时器：灯灭 → 开始正式录音
     longPressTimer_ = new QTimer(this);
     longPressTimer_->setSingleShot(true);
     connect(longPressTimer_, &QTimer::timeout, this, [this]() {
         if (state_ == PreRecording) {
+            // 复位 CapsLock 灯
+            simulateCapsLock();
+            // 进入正式录音
             state_ = Recording;
+            audioBuffer_.clear(); // 清除预录音期间的静音
             emit statusChanged("正在录音...");
-            LOG_DEBUG(kTag, "状态转换: PreRecording → Recording (长按确认)");
+            LOG_DEBUG(kTag, "PreRecording → Recording (灯灭，开始录音)");
         }
     });
 
@@ -57,7 +61,7 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
     connect(cooldownTimer_, &QTimer::timeout, this, [this]() {
         if (state_ == Cooldown) {
             state_ = Idle;
-            LOG_DEBUG(kTag, "状态转换: Cooldown → Idle (冷却结束)");
+            LOG_DEBUG(kTag, "Cooldown → Idle (冷却结束)");
         }
     });
 }
@@ -74,7 +78,7 @@ bool VoiceInputService::start() {
     connect(impl_->audioCapture, &AudioCapture::audioDataReady,
             this, &VoiceInputService::onAudioData);
 
-    // 2. STT 引擎已作为参数传入（共享全局实例）
+    // 2. STT 引擎已作为参数传入
 
     // 3. 初始化全局快捷键
     impl_->hotkey = new CapsLockVoiceHotkey(this);
@@ -96,7 +100,7 @@ bool VoiceInputService::start() {
         LOG_ERROR(kTag, "文本注入器初始化失败");
     }
 
-    // 启动快捷键（首次会弹出授权对话框）
+    // 启动快捷键
     if (!impl_->hotkey->start()) {
         emit error("全局快捷键启动失败");
         return false;
@@ -104,7 +108,7 @@ bool VoiceInputService::start() {
 
     running_ = true;
     state_ = Idle;
-    emit statusChanged("语音输入已启动（等待授权...）");
+    emit statusChanged("语音输入已启动");
     LOG_INFO(kTag, "语音输入服务已启动");
     return true;
 }
@@ -131,49 +135,39 @@ void VoiceInputService::stop() {
 }
 
 void VoiceInputService::onHotkeyActivated() {
-    // Recording 状态：屏蔽所有重复 Activated（防抖核心）
-    if (state_ == Recording) {
-        LOG_DEBUG(kTag, "忽略 Activated (Recording 状态屏蔽)");
+    // Recording 和 Cooldown 状态：屏蔽所有 Activated（防抖核心）
+    if (state_ == Recording || state_ == Cooldown) {
+        LOG_DEBUG(kTag, QString("忽略 Activated (state=%1)").arg(state_ == Recording ? "Recording" : "Cooldown"));
         return;
     }
 
-    // Cooldown 状态：冷却期内忽略
-    if (state_ == Cooldown) {
-        LOG_DEBUG(kTag, "忽略 Activated (冷却期内)");
-        return;
-    }
-
-    // Idle 状态 → 开始预录音
-    if (state_ == Idle) {
-        state_ = PreRecording;
-        recording_ = true;
-        audioBuffer_.clear();
-
-        longPressTimer_->start(longPressThreshold_);
-
-        int deviceIndex = configManager_->get("audio.input_device").toInt();
-        int sampleRate = configManager_->get("stt.sample_rate").toInt();
-        int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
-        impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
-
-        LOG_DEBUG(kTag, "状态转换: Idle → PreRecording");
-        emit statusChanged("等待长按确认...");
-        return;
-    }
-
-    // PreRecording 状态收到重复 Activated → 忽略（防抖）
+    // PreRecording 重复触发：忽略
     if (state_ == PreRecording) {
         LOG_DEBUG(kTag, "忽略重复 Activated (PreRecording 防抖)");
         return;
     }
+
+    // Idle → PreRecording（灯亮，预录音）
+    state_ = PreRecording;
+    recording_ = true;
+    audioBuffer_.clear();
+
+    int deviceIndex = configManager_->get("audio.input_device").toInt();
+    int sampleRate = configManager_->get("stt.sample_rate").toInt();
+    int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
+    impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
+
+    // 启动 1s 定时器：灯灭 → 正式录音
+    longPressTimer_->start(longPressThreshold_);
+
+    LOG_DEBUG(kTag, "Idle → PreRecording (灯亮)");
+    emit statusChanged("等待长按确认...");
 }
 
 void VoiceInputService::onHotkeyDeactivated() {
-    LOG_DEBUG(kTag, QString("Deactivated (state=%1)").arg(recording_ ? "recording" : "idle"));
-
     // Cooldown 状态的 Deactivated → 忽略
     if (state_ == Cooldown) {
-        LOG_DEBUG(kTag, "忽略 Deactivated (Cooldown 状态屏蔽)");
+        LOG_DEBUG(kTag, "忽略 Deactivated (Cooldown)");
         return;
     }
 
@@ -186,23 +180,23 @@ void VoiceInputService::onHotkeyDeactivated() {
     }
 
     if (state_ == PreRecording) {
-        // 短按 → 模拟 CapsLock 切换大小写
-        state_ = Idle;
-        LOG_DEBUG(kTag, "短按，模拟 CapsLock");
+        // 短按 → 恢复 CapsLock 灯
         simulateCapsLock();
+        state_ = Idle;
+        LOG_DEBUG(kTag, "短按，恢复 CapsLock 灯");
         emit statusChanged("短按：切换 CapsLock");
     } else if (state_ == Recording) {
-        // 长按后松开 → 先复位 CapsLock，再开始识别
-        state_ = Idle;
-        LOG_DEBUG(kTag, "状态转换: Recording → Idle (松开转写)");
+        // 长按后松开 → 先恢复 CapsLock，再开始识别
         simulateCapsLock();
+        state_ = Idle;
+        LOG_DEBUG(kTag, "Recording → Idle (松开转写)");
         stopRecordingAndTranscribe();
     }
 
     // 启动冷却期
     state_ = Cooldown;
     cooldownTimer_->start(releaseCooldownMs_);
-    LOG_DEBUG(kTag, QString("状态转换: → Cooldown (%1ms)").arg(releaseCooldownMs_));
+    LOG_DEBUG(kTag, QString("→ Cooldown (%1ms)").arg(releaseCooldownMs_));
 }
 
 void VoiceInputService::onAudioData(const std::vector<float>& samples, int sampleRate) {
@@ -262,7 +256,7 @@ void VoiceInputService::onRecognitionComplete(const QString& text) {
 void VoiceInputService::simulateCapsLock() {
     if (impl_->injector && impl_->injector->isInitialized()) {
         impl_->injector->simulateKeysym(0xffe5);
-        LOG_DEBUG(kTag, "模拟 CapsLock 按键已注入");
+        LOG_DEBUG(kTag, "模拟 CapsLock 按键");
     } else {
         LOG_WARNING(kTag, "文本注入器未初始化，无法模拟 CapsLock");
     }

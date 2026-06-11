@@ -17,11 +17,15 @@ class ConfigManager;
 /**
  * @brief CapsLock 语音输入服务
  *
- * 状态机（防止 CapsLock 抖动/误触）：
- *  Idle          — 空闲，等待按键
- *  PreRecording  — 按下 CapsLock，预录音，等待长按确认
- *  Recording     — 长按 1s 确认，正式录音（屏蔽所有 Portal 信号）
- *  Cooldown      — 松开后冷却期，防止立即重新触发
+ * CapsLock 灯作为录音状态指示器：
+ *   按下 → 灯亮 (PreRecording) → 1s 后灯灭 → 正式录音 (Recording)
+ *   → 松开 → 识别 → 注入 → 复位 CapsLock 状态
+ *
+ * 状态机：
+ *   Idle          — 空闲
+ *   PreRecording  — 按下，灯亮，等待长按确认
+ *   Recording     — 1s 后灯灭，正式录音（屏蔽 Portal 信号）
+ *   Cooldown      — 松开后冷却，防止误触
  */
 class VoiceInputService : public QObject {
     Q_OBJECT
@@ -31,19 +35,12 @@ public:
                                QObject* parent = nullptr);
     ~VoiceInputService() override;
 
-    /** @brief 启动服务（初始化所有组件） */
     bool start();
-
-    /** @brief 停止服务 */
     void stop();
 
-    /** @brief 是否已启动 */
     bool isRunning() const { return running_; }
-
-    /** @brief 是否正在录音 */
     bool isRecording() const { return recording_; }
 
-    /** @brief 长按阈值（毫秒），默认 1000ms */
     void setLongPressThreshold(int ms) { longPressThreshold_ = ms; }
     int longPressThreshold() const { return longPressThreshold_; }
 
