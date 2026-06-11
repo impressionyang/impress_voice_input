@@ -54,8 +54,8 @@ bool StreamingAudioWriter::start(int sampleRate, bool debugEnabled, const QStrin
     wasSpeaking_ = false;
     silenceFramesAfterSpeech_ = 0;
 
-    // 初始化 VAD（30ms 帧，低能量阈值）
-    vad_ = std::make_unique<VoiceActivityDetector>(sampleRate_, 30, 0.015f, 3);
+    // 初始化 VAD（30ms 帧，降低能量阈值以适配低增益麦克风）
+    vad_ = std::make_unique<VoiceActivityDetector>(sampleRate_, 30, 0.003f, 3);
 
     // VAD 帧大小
     vadFrameSize_ = sampleRate_ * 30 / 1000;
@@ -128,7 +128,7 @@ void StreamingAudioWriter::writeSamples(const std::vector<float>& samples) {
             samplesWritten_ = 0;
             silenceFramesAfterSpeech_ = 0;
             wasSpeaking_ = false;
-            vad_ = std::make_unique<VoiceActivityDetector>(sampleRate_, 30, 0.015f, 3);
+            vad_ = std::make_unique<VoiceActivityDetector>(sampleRate_, 30, 0.003f, 3);
 
             if (!openNewFile()) {
                 LOG_ERROR(kTag, "无法打开新的 WAV 文件，停止录制");

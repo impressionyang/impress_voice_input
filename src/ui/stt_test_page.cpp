@@ -196,6 +196,12 @@ void STTTestPage::onChunkCompleted(const QString& filePath, int durationMs) {
     LOG_INFO(kTag, QString("WAV 片段 #%1 已完成: %2 (%3ms)")
         .arg(completedCount_).arg(filePath).arg(durationMs));
 
+    if (filePath.isEmpty()) {
+        LOG_ERROR(kTag, "chunkCompleted 信号中文件路径为空，跳过识别");
+        statusLabel_->setText("错误：文件路径为空");
+        return;
+    }
+
     statusLabel_->setText(QString("正在识别 #%1 (%2ms)...").arg(completedCount_).arg(durationMs));
 
     // 在后台线程对 WAV 文件进行识别
@@ -221,6 +227,9 @@ void STTTestPage::transcribeChunk(const QString& filePath, int /* durationMs */)
         if (!file.open(QIODevice::ReadOnly)) {
             errorMsg = QString("无法打开 WAV 文件: %1").arg(filePath);
         } else {
+            // 诊断：文件大小
+            qint64 fileSize = file.size();
+
             // 跳过 44 字节 WAV 头
             file.seek(44);
             QByteArray raw = file.readAll();
@@ -229,13 +238,20 @@ void STTTestPage::transcribeChunk(const QString& filePath, int /* durationMs */)
             // int16 -> float
             int numSamples = raw.size() / 2;
             std::vector<float> samples(numSamples);
+            double rms = 0.0;
             for (int i = 0; i < numSamples; i++) {
                 int16_t val = *reinterpret_cast<const int16_t*>(raw.data() + i * 2);
                 samples[i] = static_cast<float>(val) / 32767.0f;
+                rms += static_cast<double>(samples[i]) * samples[i];
             }
+            rms = std::sqrt(rms / std::max(1, numSamples));
+
+            LOG_DEBUG(kTag, QString("WAV 诊断: %1 (文件大小: %2 字节, 样本: %3, RMS: %4)")
+                .arg(filePath).arg(fileSize).arg(numSamples).arg(rms, 0, 'f', 6));
 
             if (!sttEngine_->isLoaded()) {
                 text = "[错误] 模型未加载";
+                LOG_ERROR(kTag, "模型未加载，无法推理");
             } else {
                 QString language = configManager_->get("stt.language").toString();
                 auto result = sttEngine_->infer(samples, audioSampleRate_, language);
