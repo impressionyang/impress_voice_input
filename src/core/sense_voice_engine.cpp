@@ -300,20 +300,50 @@ void SenseVoiceEngine::setDebugSaveAudio(bool enable) {
     LOG_INFO(kTag, QString("调试录音保存: %1").arg(enable ? "开启" : "关闭"));
 }
 
-/** CTC 贪婪解码：去重 + 去除空白 */
-static std::vector<int> ctcGreedyDecode(const std::vector<int>& tokens, int blankToken) {
+/** CTC 贪婪解码：去重 + 去除空白
+ *
+ * SenseVoice 使用 CTC 训练，连续相同 token 在 CTC 中表示同一字符。
+ * 但中文里确实存在叠词（如"好好好""是是是"），当模型对同一 token
+ * 的连续预测置信度都很高时，需要在空白帧后允许重复。
+ *
+ * 改进：当空白帧后出现相同 token 且置信度超过阈值时，保留重复。
+ */
+static std::vector<int> ctcGreedyDecode(const std::vector<int>& tokens,
+                                         const std::vector<float>& confidences,
+                                         int blankToken)
+{
     std::vector<int> result;
+    std::vector<float> resultConf;
     int prev = -1;
+    bool prevWasBlank = false;
 
-    for (int token : tokens) {
+    for (size_t i = 0; i < tokens.size(); i++) {
+        int token = tokens[i];
+        float conf = confidences.empty() ? 1.0f : confidences[i];
+
         if (token == blankToken) {
-            prev = -1; // 重置去重状态
+            prev = -1;
+            prevWasBlank = true;
             continue;
         }
+
         if (token != prev) {
+            // 不同 token，直接加入
             result.push_back(token);
+            resultConf.push_back(conf);
+        } else if (prevWasBlank) {
+            // 相同 token 但前面有空白：可能是重复字符（"好 好 好"）
+            // 置信度足够高时保留
+            if (conf > 0.5f) {
+                result.push_back(token);
+                resultConf.push_back(conf);
+            }
+            // 否则认为是 CTC 重复，跳过
         }
+        // else: 相同 token 前面没有空白，认为是 CTC 重复，跳过
+
         prev = token;
+        prevWasBlank = false;
     }
 
     return result;
@@ -482,8 +512,9 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
         int seqLen = static_cast<int>(shape[1]);
         int vocabSize = static_cast<int>(shape[2]);
 
-        // 6. CTC 贪婪解码
-        std::vector<int> rawTokens;
+        // 6. CTC 贪婪解码：收集所有帧的 token 和置信度
+        std::vector<int> frameTokens;
+        std::vector<float> frameConfs;
         float totalConf = 0.0f;
         int confCount = 0;
 
@@ -492,19 +523,20 @@ RecognitionResult SenseVoiceEngine::infer(const std::vector<float>& samples,
             int bestAbsIdx = argmax(logitsData, offset, offset + vocabSize);
             int bestToken = bestAbsIdx - offset; // 绝对索引 → token ID
 
-            if (bestToken != SenseVoiceTokenizer::kTokenBlank) {
-                rawTokens.push_back(bestToken);
+            float maxLogit = logitsData[bestAbsIdx];
+            // 计算 softmax 置信度
+            float conf = 1.0f / (1.0f + std::exp(-maxLogit));
+            frameTokens.push_back(bestToken);
+            frameConfs.push_back(conf);
 
-                // 计算置信度
-                float maxLogit = logitsData[bestAbsIdx];
-                // 近似置信度: 使用 softmax 的最大值位置
-                totalConf += maxLogit;
+            if (bestToken != SenseVoiceTokenizer::kTokenBlank) {
+                totalConf += conf;
                 confCount++;
             }
         }
 
-        // CTC 去重
-        std::vector<int> decodedTokens = ctcGreedyDecode(rawTokens, SenseVoiceTokenizer::kTokenBlank);
+        // CTC 去重 + 重复字符检测
+        std::vector<int> decodedTokens = ctcGreedyDecode(frameTokens, frameConfs, SenseVoiceTokenizer::kTokenBlank);
 
         // 计算平均置信度 (softmax)
         if (confCount > 0) {

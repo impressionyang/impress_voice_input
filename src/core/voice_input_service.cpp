@@ -150,10 +150,10 @@ void VoiceInputService::onHotkeyDeactivated() {
         simulateCapsLock();
         emit statusChanged("短按：切换 CapsLock");
     } else {
-        // 长按 → 停止录音并转写
-        stopRecordingAndTranscribe();
-        // 恢复 CapsLock 原始状态（系统已处理了一次 CapsLock 切换）
+        // 长按 → 先恢复 CapsLock 状态，再开始识别
+        // 这样识别结果注入时 CapsLock 已恢复原始状态
         simulateCapsLock();
+        stopRecordingAndTranscribe();
     }
 
     longPressDetected_ = false;
