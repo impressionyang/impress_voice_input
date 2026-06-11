@@ -192,9 +192,10 @@ void VoiceInputService::onHotkeyDeactivated() {
         simulateCapsLock();
         emit statusChanged("短按：切换 CapsLock");
     } else if (state_ == Recording) {
-        // 长按后松开 → 停止录音并转写
+        // 长按后松开 → 先复位 CapsLock，再开始识别
         state_ = Idle;
         LOG_DEBUG(kTag, "状态转换: Recording → Idle (松开转写)");
+        simulateCapsLock();
         stopRecordingAndTranscribe();
     }
 
