@@ -40,18 +40,15 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
 {
     impl_->sttEngine = sttEngine;
 
-    // 1s 定时器：灯灭 → 开始正式录音
+    // 1s 定时器：确认长按 → 开始正式录音（CapsLock 灯保持 ON，识别后复位）
     longPressTimer_ = new QTimer(this);
     longPressTimer_->setSingleShot(true);
     connect(longPressTimer_, &QTimer::timeout, this, [this]() {
         if (state_ == PreRecording) {
-            // 复位 CapsLock 灯
-            simulateCapsLock();
-            // 进入正式录音
             state_ = Recording;
             audioBuffer_.clear(); // 清除预录音期间的静音
             emit statusChanged("正在录音...");
-            LOG_DEBUG(kTag, "PreRecording → Recording (灯灭，开始录音)");
+            LOG_DEBUG(kTag, "PreRecording → Recording (灯保持 ON，开始录音)");
         }
     });
 
@@ -185,10 +182,9 @@ void VoiceInputService::onHotkeyDeactivated() {
         state_ = Idle;
         LOG_DEBUG(kTag, "短按，恢复 CapsLock 灯");
     } else if (state_ == Recording) {
-        // 长按后松开 → 先恢复 CapsLock，再开始识别
-        simulateCapsLock();
+        // 长按后松开 → 灯保持 ON，等待识别完成后复位
         state_ = Idle;
-        LOG_DEBUG(kTag, "Recording → Idle (松开转写)");
+        LOG_DEBUG(kTag, "Recording → Idle (松开转写，灯保持 ON)");
         stopRecordingAndTranscribe();
     }
 
@@ -207,6 +203,8 @@ void VoiceInputService::onAudioData(const std::vector<float>& samples, int sampl
 
 void VoiceInputService::stopRecordingAndTranscribe() {
     if (audioBuffer_.empty()) {
+        // 无音频 → 复位 CapsLock 灯
+        simulateCapsLock();
         emit statusChanged("未检测到音频输入");
         return;
     }
@@ -235,6 +233,9 @@ void VoiceInputService::stopRecordingAndTranscribe() {
 }
 
 void VoiceInputService::onRecognitionComplete(const QString& text) {
+    // 识别完成后，复位 CapsLock 灯
+    simulateCapsLock();
+
     if (text.isEmpty()) {
         emit statusChanged("识别结果：无语音输入");
         return;
