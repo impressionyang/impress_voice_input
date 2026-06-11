@@ -5,6 +5,8 @@
 #include <memory>
 
 class QLabel;
+class QSystemTrayIcon;
+class QMenu;
 
 namespace impress {
 
@@ -36,6 +38,9 @@ private:
     void setupUI(SenseVoiceEngine* sttEngine);
     void setupMenuBar();
     void setupStatusBar(SenseVoiceEngine* sttEngine);
+    void setupTrayIcon();
+    void updateTrayIcon(const QString& status);
+    QPixmap createTrayIcon(const QColor& color, const QString& symbol);
     void loadStyleSheet();
     void onVoiceInputConfigChanged();
     void updateModelStatus();
@@ -48,6 +53,8 @@ private:
     SettingsPage* settingsPage_;
     QTabWidget* tabWidget_;
     QLabel* modelStatusLabel_;
+    QSystemTrayIcon* trayIcon_ = nullptr;
+    QMenu* trayMenu_ = nullptr;
 };
 
 } // namespace impress

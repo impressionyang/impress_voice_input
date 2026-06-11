@@ -15,6 +15,9 @@
 #include <QStatusBar>
 #include <QLabel>
 #include <QFileInfo>
+#include <QSystemTrayIcon>
+#include <QPainter>
+#include <QIcon>
 
 static const char* const kTag = "MainWindow";
 
@@ -32,6 +35,7 @@ MainWindow::MainWindow(ConfigManager* configManager,
     setupUI(sttEngine);
     setupMenuBar();
     setupStatusBar(sttEngine);
+    setupTrayIcon();
     loadStyleSheet();
 
     // 初始化语音输入服务（共享全局引擎）
@@ -39,6 +43,7 @@ MainWindow::MainWindow(ConfigManager* configManager,
     connect(voiceInputService_, &VoiceInputService::statusChanged,
             this, [this](const QString& status) {
                 LOG_DEBUG(kTag, QString("语音输入状态: %1").arg(status));
+                updateTrayIcon(status);
             });
     connect(voiceInputService_, &VoiceInputService::error,
             this, [this](const QString& err) {
@@ -98,6 +103,98 @@ void MainWindow::setupStatusBar(SenseVoiceEngine* sttEngine) {
     updateModelStatus();
 }
 
+void MainWindow::setupTrayIcon() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        LOG_INFO(kTag, "系统托盘不可用，跳过");
+        return;
+    }
+
+    trayMenu_ = new QMenu(this);
+    auto* showAction = trayMenu_->addAction("显示主窗口");
+    connect(showAction, &QAction::triggered, this, [this]() {
+        showNormal();
+        activateWindow();
+        raise();
+    });
+    trayMenu_->addSeparator();
+    auto* exitAction = trayMenu_->addAction("退出");
+    connect(exitAction, &QAction::triggered, this, &MainWindow::close);
+
+    trayIcon_ = new QSystemTrayIcon(this);
+    trayIcon_->setContextMenu(trayMenu_);
+
+    // 初始状态
+    updateTrayIcon("语音输入就绪");
+
+    // 双击托盘显示窗口
+    connect(trayIcon_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::DoubleClick) {
+            showNormal();
+            activateWindow();
+            raise();
+        }
+    });
+
+    trayIcon_->show();
+    LOG_INFO(kTag, "系统托盘图标已创建");
+}
+
+void MainWindow::updateTrayIcon(const QString& status) {
+    if (!trayIcon_) return;
+
+    QColor color;
+    QString symbol;
+
+    // 根据状态文字匹配图标
+    if (status.contains("正在录音")) {
+        color = QColor("#e74c3c");  // 红色 - 录音中
+        symbol = "●";
+    } else if (status.contains("正在识别")) {
+        color = QColor("#f39c12");  // 橙色 - 识别中
+        symbol = "◉";
+    } else if (status.contains("等待长按") || status.contains("PreRecording")) {
+        color = QColor("#f1c40f");  // 黄色 - 预录音
+        symbol = "○";
+    } else if (status.contains("已启动") || status.contains("就绪")) {
+        color = QColor("#27ae60");  // 绿色 - 就绪
+        symbol = "○";
+    } else if (status.contains("已关闭") || status.contains("停止")) {
+        color = QColor("#95a5a6");  // 灰色 - 停止
+        symbol = "○";
+    } else {
+        color = QColor("#3498db");  // 蓝色 - 其他
+        symbol = "○";
+    }
+
+    QIcon icon = createTrayIcon(color, symbol);
+    trayIcon_->setIcon(icon);
+    trayIcon_->setToolTip(QString("Impress Voice Input - %1").arg(status));
+}
+
+QPixmap MainWindow::createTrayIcon(const QColor& color, const QString& symbol) {
+    const int size = 22;
+    QPixmap pixmap(size, size);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // 外圆
+    painter.setBrush(color);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(1, 1, size - 2, size - 2);
+
+    // 符号（实心圆点/空心环）
+    painter.setPen(QColor("#ffffff"));
+    QFont font = painter.font();
+    font.setPixelSize(14);
+    font.setBold(true);
+    painter.setFont(font);
+    painter.drawText(pixmap.rect(), Qt::AlignCenter, symbol);
+
+    return pixmap;
+}
+
 void MainWindow::setupMenuBar() {
     // 文件菜单
     auto* fileMenu = menuBar()->addMenu("文件");
@@ -132,6 +229,9 @@ void MainWindow::loadStyleSheet() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    if (trayIcon_) {
+        trayIcon_->hide();
+    }
     if (voiceInputService_) {
         voiceInputService_->stop();
     }
