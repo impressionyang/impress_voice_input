@@ -206,14 +206,14 @@ void CapsLockVoiceHotkey::handleBindResponse(uint response, const QVariantMap&) 
 }
 
 void CapsLockVoiceHotkey::handleActivated(const QString& shortcutId) {
-    if (!active_) return;
+    if (!active_ || ignoreEvents_) return;
     LOG_DEBUG(kTag, QString("快捷键按下: %1").arg(shortcutId));
     recording_ = true;
     emit recordingStarted();
 }
 
 void CapsLockVoiceHotkey::handleDeactivated(const QString& shortcutId) {
-    if (!active_) return;
+    if (!active_ || ignoreEvents_) return;
     LOG_DEBUG(kTag, QString("快捷键松开: %1").arg(shortcutId));
     recording_ = false;
     emit recordingStopped();

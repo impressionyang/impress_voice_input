@@ -184,7 +184,6 @@ void VoiceInputService::onHotkeyDeactivated() {
         simulateCapsLock();
         state_ = Idle;
         LOG_DEBUG(kTag, "短按，恢复 CapsLock 灯");
-        emit statusChanged("短按：切换 CapsLock");
     } else if (state_ == Recording) {
         // 长按后松开 → 先恢复 CapsLock，再开始识别
         simulateCapsLock();
@@ -254,12 +253,24 @@ void VoiceInputService::onRecognitionComplete(const QString& text) {
 }
 
 void VoiceInputService::simulateCapsLock() {
+#ifndef PLATFORM_WINDOWS
+    // XTest 模拟的按键会被 D-Bus portal 再次捕获，导致 Activated/Deactivated 信号。
+    // 在模拟期间屏蔽 portal 信号，防止状态机被打断。
+    if (impl_->hotkey) {
+        impl_->hotkey->setIgnoreEvents(true);
+    }
+#endif
     if (impl_->injector && impl_->injector->isInitialized()) {
         impl_->injector->simulateKeysym(0xffe5);
         LOG_DEBUG(kTag, "模拟 CapsLock 按键");
     } else {
         LOG_WARNING(kTag, "文本注入器未初始化，无法模拟 CapsLock");
     }
+#ifndef PLATFORM_WINDOWS
+    if (impl_->hotkey) {
+        impl_->hotkey->setIgnoreEvents(false);
+    }
+#endif
 }
 
 } // namespace impress

@@ -2,11 +2,13 @@
 
 #include <QMainWindow>
 #include <QTabWidget>
+#include <QMap>
 #include <memory>
 
 class QLabel;
 class QSystemTrayIcon;
 class QMenu;
+class QIcon;
 
 namespace impress {
 
@@ -44,6 +46,7 @@ private:
     void loadStyleSheet();
     void onVoiceInputConfigChanged();
     void updateModelStatus();
+    void doExit();
 
     ConfigManager* configManager_;
     SenseVoiceEngine* sttEngine_;
@@ -55,6 +58,7 @@ private:
     QLabel* modelStatusLabel_;
     QSystemTrayIcon* trayIcon_ = nullptr;
     QMenu* trayMenu_ = nullptr;
+    QMap<QString, QIcon> trayIcons_;
 };
 
 } // namespace impress

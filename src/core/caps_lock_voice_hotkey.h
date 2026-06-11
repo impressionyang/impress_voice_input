@@ -37,6 +37,9 @@ public:
     /** @brief 当前是否正在录音（CapsLock 长按超过 1s 后） */
     bool isRecording() const { return recording_; }
 
+    /** @brief 临时忽略 portal 信号（XTest 模拟按键期间） */
+    void setIgnoreEvents(bool ignore) { ignoreEvents_ = ignore; }
+
 signals:
     /** @brief 开始录音（长按超过 1 秒后） */
     void recordingStarted();
@@ -55,6 +58,7 @@ private:
     std::unique_ptr<Impl> impl_;
     bool active_ = false;
     bool recording_ = false;
+    bool ignoreEvents_ = false;
 
     void handleSessionResponse(uint response, const QVariantMap& results);
     void handleBindResponse(uint response, const QVariantMap& results);
