@@ -35,6 +35,18 @@ public:
     /** @brief 加载全局模型（在配置加载后手动调用） */
     void loadGlobalModel();
 
+    /** @brief 应用主题（light/dark），可在运行时调用 */
+    static void applyTheme(const QString& theme);
+
+    /** @brief 应用全局字体大小 */
+    static void applyFontSize(int size);
+
+    /** @brief 生成托盘图标（light=黑色，dark=白色） */
+    static QIcon createTrayIcon(bool active);
+
+    /** @brief 当前主题是否为 dark */
+    static bool isDarkTheme();
+
 signals:
     /** @brief 模型加载中（带路径） */
     void modelLoading(const QString& modelPath);

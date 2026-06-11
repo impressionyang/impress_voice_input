@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QCommandLineParser>
+#include <QApplication>
 
 int main(int argc, char* argv[])
 {
@@ -65,6 +66,13 @@ int main(int argc, char* argv[])
     if (!modelPath.isEmpty()) {
         configManager->set("stt.model_path", modelPath);
     }
+
+    // 应用主题和字体
+    QString theme = configManager->get("ui.theme").toString();
+    int fontSize = configManager->get("ui.font_size").toInt();
+    impress::Application::applyTheme(theme);
+    if (fontSize > 0) impress::Application::applyFontSize(fontSize);
+    LOG_INFO("Main", QString("主题: %1, 字体: %2").arg(theme).arg(fontSize));
 
     // 配置加载完成后，启动全局模型加载
     app.loadGlobalModel();

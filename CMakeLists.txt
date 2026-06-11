@@ -139,7 +139,9 @@ else()
     list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
     add_compile_definitions(PLATFORM_LINUX)
 endif()
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS}
+    src/ui/resources/styles/styles.qrc
+)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -197,15 +199,6 @@ if(WIN32)
     endif()
 endif()
 
-# ============================================================================
-# 资源文件
-# ============================================================================
-# 样式表
-qt_add_resources(${PROJECT_NAME} "styles"
-    PREFIX "/"
-    FILES
-        src/ui/resources/styles/main.qss
-)
 
 # ============================================================================
 # 安装

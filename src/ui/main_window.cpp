@@ -5,6 +5,7 @@
 #include "core/voice_input_service.h"
 #include "core/sense_voice_engine.h"
 #include "app/config_manager.h"
+#include "app/application.h"
 #include "utils/logger.h"
 
 #include <QMenuBar>
@@ -37,7 +38,6 @@ MainWindow::MainWindow(ConfigManager* configManager,
     setupMenuBar();
     setupStatusBar(sttEngine);
     setupTrayIcon();
-    loadStyleSheet();
 
     // 初始化语音输入服务（共享全局引擎）
     voiceInputService_ = new VoiceInputService(configManager_, sttEngine, this);
@@ -126,9 +126,9 @@ void MainWindow::setupTrayIcon() {
     trayIcon_ = new QSystemTrayIcon(this);
     trayIcon_->setContextMenu(trayMenu_);
 
-    // 默认状态：停止图标（SP_MediaStop）
-    idleIcon_ = style()->standardIcon(QStyle::SP_MediaStop);
-    activeIcon_ = style()->standardIcon(QStyle::SP_MediaPlay);
+    // 默认状态：根据主题颜色生成图标
+    idleIcon_ = Application::createTrayIcon(false);
+    activeIcon_ = Application::createTrayIcon(true);
 
     trayIcon_->setIcon(idleIcon_);
     trayIcon_->setToolTip("Impress Voice Input - 语音输入就绪");
@@ -235,6 +235,17 @@ void MainWindow::updateModelStatus() {
 
 void MainWindow::onVoiceInputConfigChanged() {
     if (!voiceInputService_) return;
+
+    // 动态应用主题和字体
+    QString theme = configManager_->get("ui.theme").toString();
+    int fontSize = configManager_->get("ui.font_size").toInt();
+    Application::applyTheme(theme);
+    if (fontSize > 0) Application::applyFontSize(fontSize);
+
+    // 刷新托盘图标颜色
+    idleIcon_ = Application::createTrayIcon(false);
+    activeIcon_ = Application::createTrayIcon(true);
+    updateTrayIcon("语音输入就绪");
 
     // 更新模型状态显示
     updateModelStatus();
