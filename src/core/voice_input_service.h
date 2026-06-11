@@ -69,14 +69,16 @@ private:
     bool longPressDetected_ = false;
     bool capsResetDone_ = false;  // CapsLock 复位后忽略重复 Activated
     bool cooldownActive_ = false;  // 松开后的冷却期，防止立即重新触发
-    int longPressThreshold_ = 1000;
-    int releaseCooldownMs_ = 1000;  // 松开后冷却时间
+    int longPressThreshold_ = 1000;  // 1s 启动录音
+    int capsResetDelayMs_ = 3000;    // 3s 后复位 CapsLock 灯
+    int releaseCooldownMs_ = 1000;   // 松开后冷却时间
 
     std::vector<float> audioBuffer_;
     int audioSampleRate_ = 16000;
 
-    QTimer* longPressTimer_ = nullptr;
-    QTimer* cooldownTimer_ = nullptr;
+    QTimer* longPressTimer_ = nullptr;   // 1s 启动录音
+    QTimer* capsResetTimer_ = nullptr;   // 3s 复位 CapsLock 灯
+    QTimer* cooldownTimer_ = nullptr;    // 松开后冷却
 
     void startRecording();
     void stopRecordingAndTranscribe();

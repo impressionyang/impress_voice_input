@@ -39,16 +39,26 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
     , impl_(std::make_unique<Impl>())
 {
     impl_->sttEngine = sttEngine;
+
+    // 1s 定时器：启动录音
     longPressTimer_ = new QTimer(this);
     longPressTimer_->setSingleShot(true);
     connect(longPressTimer_, &QTimer::timeout, this, [this]() {
-        // 长按超时仍未松开 → 确认为长按录音
         if (!longPressDetected_) {
             longPressDetected_ = true;
-            capsResetDone_ = true;
-            // 立即复位 CapsLock，不等用户松开
-            simulateCapsLock();
             emit statusChanged("正在录音...");
+        }
+    });
+
+    // 3s 定时器：复位 CapsLock 灯（防抖：只在未按下状态下执行）
+    capsResetTimer_ = new QTimer(this);
+    capsResetTimer_->setSingleShot(true);
+    connect(capsResetTimer_, &QTimer::timeout, this, [this]() {
+        // 如果已经松开（recording_ = false），不执行
+        if (recording_) {
+            capsResetDone_ = true;
+            simulateCapsLock();
+            LOG_DEBUG(kTag, "CapsLock 灯已复位（防抖保护中）");
         }
     });
 
@@ -111,6 +121,7 @@ void VoiceInputService::stop() {
     if (!running_) return;
 
     longPressTimer_->stop();
+    capsResetTimer_->stop();
     cooldownTimer_->stop();
 
     if (impl_->audioCapture) {
@@ -146,10 +157,12 @@ void VoiceInputService::onHotkeyActivated() {
     LOG_DEBUG(kTag, "快捷键激活（按下）");
     recording_ = true;
     longPressDetected_ = false;
+    capsResetDone_ = false;
     audioBuffer_.clear();
 
-    // 启动长按定时器
+    // 启动 1s 录音确认定时器 + 3s CapsLock 灯复位定时器
     longPressTimer_->start(longPressThreshold_);
+    capsResetTimer_->start(capsResetDelayMs_);
 
     // 开始音频采集（后台预采集）
     int deviceIndex = configManager_->get("audio.input_device").toInt();
@@ -164,6 +177,7 @@ void VoiceInputService::onHotkeyDeactivated() {
     LOG_DEBUG(kTag, "快捷键停用（松开）");
     recording_ = false;
     longPressTimer_->stop();
+    capsResetTimer_->stop();
 
     // 停止音频采集
     if (impl_->audioCapture && impl_->audioCapture->isRunning()) {
@@ -176,7 +190,7 @@ void VoiceInputService::onHotkeyDeactivated() {
         simulateCapsLock();
         emit statusChanged("短按：切换 CapsLock");
     } else {
-        // 长按 → CapsLock 已在长按阈值时复位，松开后直接开始识别
+        // 长按 → CapsLock 已在 3s 定时器时复位，松开后直接开始识别
         stopRecordingAndTranscribe();
     }
 
