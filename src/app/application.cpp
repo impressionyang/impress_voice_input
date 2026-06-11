@@ -109,7 +109,25 @@ void Application::applyTheme(const QString& theme) {
         palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor(80, 80, 80));
         palette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(127, 127, 127));
     } else {
-        palette = qApp->style()->standardPalette();
+        // 显式设置亮色主题（不依赖 standardPalette，兼容 Fusion 风格）
+        palette.setColor(QPalette::Window, QColor(255, 255, 255));
+        palette.setColor(QPalette::WindowText, QColor(34, 34, 34));
+        palette.setColor(QPalette::Base, QColor(255, 255, 255));
+        palette.setColor(QPalette::AlternateBase, QColor(245, 245, 245));
+        palette.setColor(QPalette::ToolTipBase, Qt::white);
+        palette.setColor(QPalette::ToolTipText, QColor(34, 34, 34));
+        palette.setColor(QPalette::Text, QColor(34, 34, 34));
+        palette.setColor(QPalette::Button, QColor(255, 255, 255));
+        palette.setColor(QPalette::ButtonText, QColor(34, 34, 34));
+        palette.setColor(QPalette::BrightText, QColor(0, 150, 136));
+        palette.setColor(QPalette::Link, QColor(42, 130, 218));
+        palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        palette.setColor(QPalette::HighlightedText, Qt::white);
+        palette.setColor(QPalette::Disabled, QPalette::Text, QColor(180, 180, 180));
+        palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(180, 180, 180));
+        palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(180, 180, 180));
+        palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor(200, 200, 200));
+        palette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(160, 160, 160));
     }
     qApp->setPalette(palette);
 
