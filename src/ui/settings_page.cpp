@@ -48,6 +48,23 @@ void SettingsPage::setupUI() {
     contentLayout->setContentsMargins(12, 8, 12, 8);
     contentLayout->setSpacing(12);
 
+    // 通用设置
+    auto* appGroup = new QGroupBox("通用设置", contentWidget);
+    auto* appLayout = new QFormLayout(appGroup);
+    appLayout->setSpacing(8);
+    appLayout->setContentsMargins(10, 12, 10, 12);
+
+    auto* logDirRow = new QHBoxLayout();
+    logDirEdit_ = new QLineEdit(this);
+    logDirEdit_->setPlaceholderText("日志文件保存路径（为空时使用系统默认路径）");
+    logDirBtn_ = new QPushButton("浏览...", this);
+    connect(logDirBtn_, &QPushButton::clicked, this, &SettingsPage::onBrowseLogDir);
+    logDirRow->addWidget(logDirEdit_);
+    logDirRow->addWidget(logDirBtn_);
+    appLayout->addRow("日志目录:", logDirRow);
+
+    contentLayout->addWidget(appGroup);
+
     // STT 设置
     auto* sttGroup = new QGroupBox("STT 推理设置", contentWidget);
     auto* sttLayout = new QFormLayout(sttGroup);
@@ -221,6 +238,7 @@ void SettingsPage::setupUI() {
 }
 
 void SettingsPage::loadFromConfig() {
+    logDirEdit_->setText(configManager_->get("app.log_dir").toString());
     modelPathEdit_->setText(configManager_->get("stt.model_path").toString());
     tokensPathEdit_->setText(configManager_->get("stt.tokens_path").toString());
     modelTypeCombo_->setCurrentText(configManager_->get("stt.model_type").toString());
@@ -252,6 +270,7 @@ void SettingsPage::loadFromConfig() {
 void SettingsPage::saveToConfig() {
     // 批量写入所有配置，只发射一次 configChanged 信号
     QMap<QString, QVariant> batch;
+    batch["app.log_dir"] = logDirEdit_->text();
     batch["stt.model_path"] = modelPathEdit_->text();
     batch["stt.tokens_path"] = tokensPathEdit_->text();
     batch["stt.model_type"] = modelTypeCombo_->currentText();
@@ -335,6 +354,14 @@ void SettingsPage::onBrowseAudioDebugDir() {
         QFileDialog::ShowDirsOnly);
     if (!path.isEmpty()) {
         audioDebugDirEdit_->setText(path);
+    }
+}
+
+void SettingsPage::onBrowseLogDir() {
+    QString path = QFileDialog::getExistingDirectory(this, "选择日志目录", "",
+        QFileDialog::ShowDirsOnly);
+    if (!path.isEmpty()) {
+        logDirEdit_->setText(path);
     }
 }
 

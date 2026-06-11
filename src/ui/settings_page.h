@@ -32,6 +32,7 @@ private slots:
     void onBrowseModelPath();
     void onBrowseTokensPath();
     void onBrowseAudioDebugDir();
+    void onBrowseLogDir();
     void onSaveConfig();
     void onResetConfig();
 
@@ -44,6 +45,10 @@ private:
     int getSelectedAudioDeviceIndex() const;
 
     ConfigManager* configManager_;
+
+    // 通用设置
+    QLineEdit* logDirEdit_;
+    QPushButton* logDirBtn_;
 
     // STT 设置
     QLineEdit* modelPathEdit_;

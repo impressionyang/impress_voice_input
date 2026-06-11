@@ -161,9 +161,10 @@ void STTTestPage::startAudioCapture() {
     int deviceIdx = deviceCombo_->currentIndex() - 1;
     audioSampleRate_ = configManager_->get("stt.sample_rate").toInt();
     bool debugEnabled = configManager_->get("stt.debug_save_audio").toBool();
+    QString debugDir = configManager_->get("audio.debug_dir").toString();
 
     // 启动流式录制器
-    if (!streamingWriter_->start(audioSampleRate_, debugEnabled)) {
+    if (!streamingWriter_->start(audioSampleRate_, debugEnabled, debugDir)) {
         QMessageBox::critical(this, "错误", "无法启动流式录制器");
         return;
     }

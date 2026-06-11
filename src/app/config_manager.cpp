@@ -65,6 +65,9 @@ void ConfigManager::loadDefaults() {
     {
         QMutexLocker locker(&mutex_);
         config_ = QVariantMap{
+            {"app", QVariantMap{
+                {"log_dir", ""}
+            }},
             {"stt", QVariantMap{
                 {"model_path", ""},
                 {"model_type", "sense_voice"},

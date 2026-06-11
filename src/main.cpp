@@ -15,14 +15,10 @@ int main(int argc, char* argv[])
     app.setApplicationVersion("0.1.0");
     app.setOrganizationName("Impress");
 
-    // 初始化日志文件
-    QString logDir = QStandardPaths::writableLocation(
+    // 默认日志目录（配置加载后可能被覆盖）
+    QString defaultLogDir = QStandardPaths::writableLocation(
         QStandardPaths::AppDataLocation);
-    QDir().mkpath(logDir);
-    QString logFilePath = logDir + "/app.log";
-    impress::Logger::init(logFilePath);
-
-    LOG_INFO("Main", QString("应用启动，日志文件: %1").arg(logFilePath));
+    QDir().mkpath(defaultLogDir);
 
     // 命令行参数
     QCommandLineParser parser;
@@ -32,6 +28,7 @@ int main(int argc, char* argv[])
     parser.addOptions({
         {{"c", "config"}, "指定配置文件路径", "path"},
         {{"m", "model"}, "指定模型路径", "path"},
+        {{"l", "log-dir"}, "指定日志文件目录", "path"},
     });
     parser.process(app);
 
@@ -39,8 +36,7 @@ int main(int argc, char* argv[])
     auto* configManager = app.configManager();
     QString configPath = parser.value("config");
     if (configPath.isEmpty()) {
-        // 使用默认配置目录
-        configPath = logDir + "/config.json";
+        configPath = defaultLogDir + "/config.json";
     }
 
     if (QFile::exists(configPath)) {
@@ -49,6 +45,20 @@ int main(int argc, char* argv[])
     } else {
         LOG_INFO("Main", "使用默认配置");
     }
+
+    // 确定日志目录：命令行 > 配置 > 默认 AppDataLocation
+    QString effectiveLogDir = parser.value("log-dir");
+    if (effectiveLogDir.isEmpty()) {
+        effectiveLogDir = configManager->get("app.log_dir").toString();
+    }
+    if (effectiveLogDir.isEmpty()) {
+        effectiveLogDir = defaultLogDir;
+    }
+    QDir().mkpath(effectiveLogDir);
+    QString logFilePath = effectiveLogDir + "/app.log";
+    impress::Logger::init(logFilePath);
+
+    LOG_INFO("Main", QString("日志目录: %1").arg(effectiveLogDir));
 
     // 命令行覆盖模型路径
     QString modelPath = parser.value("model");
