@@ -105,7 +105,7 @@ void MainWindow::setupStatusBar(SenseVoiceEngine* sttEngine) {
 
 void MainWindow::setupTrayIcon() {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
-        LOG_INFO(kTag, "系统托盘不可用，跳过");
+        LOG_INFO(kTag, "系统托盘不可用");
         return;
     }
 
@@ -136,7 +136,16 @@ void MainWindow::setupTrayIcon() {
     });
 
     trayIcon_->show();
-    LOG_INFO(kTag, "系统托盘图标已创建");
+
+    // 发送通知气泡，让用户注意到托盘图标
+    trayIcon_->showMessage(
+        "Impress Voice Input",
+        "语音输入已就绪，CapsLock 快捷键已注册",
+        QSystemTrayIcon::Information,
+        3000
+    );
+
+    LOG_INFO(kTag, QString("系统托盘图标已创建 (可用: %1)").arg(QSystemTrayIcon::isSystemTrayAvailable()));
 }
 
 void MainWindow::updateTrayIcon(const QString& status) {
@@ -166,15 +175,27 @@ void MainWindow::updateTrayIcon(const QString& status) {
         symbol = "○";
     }
 
-    QIcon icon = createTrayIcon(color, symbol);
+    QPixmap pm = createTrayIcon(color, symbol);
+    QIcon icon(pm);
+    if (icon.isNull()) {
+        LOG_ERROR(kTag, "托盘图标创建失败");
+        return;
+    }
+
     trayIcon_->setIcon(icon);
     trayIcon_->setToolTip(QString("Impress Voice Input - %1").arg(status));
+
+    // 确保托盘图标可见
+    if (!trayIcon_->isVisible()) {
+        trayIcon_->show();
+    }
 }
 
 QPixmap MainWindow::createTrayIcon(const QColor& color, const QString& symbol) {
-    const int size = 22;
+    const int size = 32;
     QPixmap pixmap(size, size);
-    pixmap.fill(Qt::transparent);
+    // 使用不透明背景，Windows 托盘对透明图标支持有限
+    pixmap.fill(QColor(40, 40, 45));
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -182,15 +203,30 @@ QPixmap MainWindow::createTrayIcon(const QColor& color, const QString& symbol) {
     // 外圆
     painter.setBrush(color);
     painter.setPen(Qt::NoPen);
-    painter.drawEllipse(1, 1, size - 2, size - 2);
+    int margin = 4;
+    painter.drawEllipse(margin, margin, size - 2 * margin, size - 2 * margin);
 
-    // 符号（实心圆点/空心环）
-    painter.setPen(QColor("#ffffff"));
-    QFont font = painter.font();
-    font.setPixelSize(14);
-    font.setBold(true);
-    painter.setFont(font);
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, symbol);
+    // 内部符号
+    if (symbol == "●") {
+        // 录音中：内部白色实心圆
+        painter.setBrush(QColor("#ffffff"));
+        int innerSize = 8;
+        int offset = (size - innerSize) / 2;
+        painter.drawEllipse(offset, offset, innerSize, innerSize);
+    } else if (symbol == "◉") {
+        // 识别中：白色环形
+        painter.setPen(QPen(QColor("#ffffff"), 3));
+        painter.setBrush(Qt::NoBrush);
+        int innerSize = 12;
+        int offset = (size - innerSize) / 2;
+        painter.drawEllipse(offset, offset, innerSize, innerSize);
+    } else {
+        // 空心：小白点
+        painter.setBrush(QColor("#ffffff"));
+        int dotSize = 6;
+        int offset = (size - dotSize) / 2;
+        painter.drawEllipse(offset, offset, dotSize, dotSize);
+    }
 
     return pixmap;
 }
