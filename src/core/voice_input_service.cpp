@@ -51,6 +51,14 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
             emit statusChanged("正在录音...");
         }
     });
+
+    // 松开后的冷却定时器
+    cooldownTimer_ = new QTimer(this);
+    cooldownTimer_->setSingleShot(true);
+    connect(cooldownTimer_, &QTimer::timeout, this, [this]() {
+        cooldownActive_ = false;
+        LOG_DEBUG(kTag, "冷却期结束，恢复 CapsLock 检测");
+    });
 }
 
 VoiceInputService::~VoiceInputService() {
@@ -103,6 +111,7 @@ void VoiceInputService::stop() {
     if (!running_) return;
 
     longPressTimer_->stop();
+    cooldownTimer_->stop();
 
     if (impl_->audioCapture) {
         impl_->audioCapture->stop();
@@ -115,6 +124,7 @@ void VoiceInputService::stop() {
     recording_ = false;
     longPressDetected_ = false;
     capsResetDone_ = false;
+    cooldownActive_ = false;
     audioBuffer_.clear();
 
     LOG_INFO(kTag, "语音输入服务已停止");
@@ -124,6 +134,12 @@ void VoiceInputService::onHotkeyActivated() {
     // CapsLock 已复位，用户仍按住键 → 忽略重复触发
     if (capsResetDone_) {
         LOG_DEBUG(kTag, "忽略重复的 Activated（CapsLock 已复位，等待松开）");
+        return;
+    }
+
+    // 冷却期内 → 忽略
+    if (cooldownActive_) {
+        LOG_DEBUG(kTag, "忽略 Activated（冷却期内）");
         return;
     }
 
@@ -166,6 +182,11 @@ void VoiceInputService::onHotkeyDeactivated() {
 
     longPressDetected_ = false;
     capsResetDone_ = false;
+
+    // 启动冷却期，1s 内忽略新的 Activated
+    cooldownActive_ = true;
+    cooldownTimer_->start(releaseCooldownMs_);
+    LOG_DEBUG(kTag, QString("冷却期启动 (%1ms)").arg(releaseCooldownMs_));
 }
 
 void VoiceInputService::onAudioData(const std::vector<float>& samples, int sampleRate) {
