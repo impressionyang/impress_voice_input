@@ -5,19 +5,7 @@
     font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
 }
 
-QWidget {
-    background-color: #ffffff;
-    color: #1a1a1a;
-}
-
-/* 容器控件必须显式设置背景 */
-QFrame {
-    background-color: #ffffff;
-}
-
-QScrollArea, QScrollArea > QWidget {
-    background-color: #ffffff;
-}
+/* 不用 QWidget/QFrame 全局背景色，由 QPalette 处理，避免黑色方块 */
 
 /* ========== QTabWidget ========== */
 QTabWidget::pane {
