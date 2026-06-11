@@ -2,7 +2,6 @@
 
 #include <QMainWindow>
 #include <QTabWidget>
-#include <QMap>
 #include <memory>
 
 class QLabel;
@@ -42,7 +41,6 @@ private:
     void setupStatusBar(SenseVoiceEngine* sttEngine);
     void setupTrayIcon();
     void updateTrayIcon(const QString& status);
-    QPixmap createTrayIcon(const QColor& color);
     void loadStyleSheet();
     void onVoiceInputConfigChanged();
     void updateModelStatus();
@@ -58,7 +56,6 @@ private:
     QLabel* modelStatusLabel_;
     QSystemTrayIcon* trayIcon_ = nullptr;
     QMenu* trayMenu_ = nullptr;
-    QMap<QString, QIcon> trayIcons_;
 };
 
 } // namespace impress

@@ -186,8 +186,7 @@ void VoiceInputService::onHotkeyDeactivated() {
     }
 
     if (state_ == Recording) {
-        // 松开 → 先恢复 CapsLock 灯，再开始识别
-        simulateCapsLock();
+        // 松开 → 开始识别（CapsLock 灯在识别完成后复位，避免重复）
         state_ = Idle;
         LOG_DEBUG(kTag, "Recording → Idle (松开转写)");
         stopRecordingAndTranscribe();

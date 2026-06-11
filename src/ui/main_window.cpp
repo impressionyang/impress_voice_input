@@ -16,10 +16,9 @@
 #include <QLabel>
 #include <QFileInfo>
 #include <QSystemTrayIcon>
-#include <QPainter>
-#include <QIcon>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QStyle>
 
 static const char* const kTag = "MainWindow";
 
@@ -111,21 +110,6 @@ void MainWindow::setupTrayIcon() {
         return;
     }
 
-    // 缓存 6 个状态图标，避免每次重建导致 GUI 卡顿
-    QIcon recordingIcon(createTrayIcon(QColor("#e74c3c")));
-    QIcon recognizingIcon(createTrayIcon(QColor("#f39c12")));
-    QIcon waitingIcon(createTrayIcon(QColor("#f1c40f")));
-    QIcon readyIcon(createTrayIcon(QColor("#27ae60")));
-    QIcon stoppedIcon(createTrayIcon(QColor("#95a5a6")));
-    QIcon otherIcon(createTrayIcon(QColor("#3498db")));
-
-    trayIcons_["recording"] = recordingIcon;
-    trayIcons_["recognizing"] = recognizingIcon;
-    trayIcons_["waiting"] = waitingIcon;
-    trayIcons_["ready"] = readyIcon;
-    trayIcons_["stopped"] = stoppedIcon;
-    trayIcons_["other"] = otherIcon;
-
     trayMenu_ = new QMenu(this);
     auto* showAction = trayMenu_->addAction("显示主窗口");
     connect(showAction, &QAction::triggered, this, [this]() {
@@ -141,7 +125,11 @@ void MainWindow::setupTrayIcon() {
 
     trayIcon_ = new QSystemTrayIcon(this);
     trayIcon_->setContextMenu(trayMenu_);
-    trayIcon_->setIcon(readyIcon);
+
+    // 使用应用窗口图标作为托盘图标，避免自定义绘制导致的黑色方块
+    trayIcon_->setIcon(windowIcon().isNull() ?
+        style()->standardIcon(QStyle::SP_ComputerIcon) :
+        windowIcon());
     trayIcon_->setToolTip("Impress Voice Input - 语音输入就绪");
     trayIcon_->show();
 
@@ -158,42 +146,11 @@ void MainWindow::setupTrayIcon() {
 }
 
 void MainWindow::updateTrayIcon(const QString& status) {
-    if (!trayIcon_ || trayIcons_.isEmpty()) return;
+    if (!trayIcon_) return;
 
-    // 状态映射到缓存图标
-    const QIcon* icon = nullptr;
-    if (status.contains("正在录音")) {
-        icon = &trayIcons_["recording"];
-    } else if (status.contains("正在识别")) {
-        icon = &trayIcons_["recognizing"];
-    } else if (status.contains("等待长按") || status.contains("PreRecording")) {
-        icon = &trayIcons_["waiting"];
-    } else if (status.contains("已启动") || status.contains("就绪")) {
-        icon = &trayIcons_["ready"];
-    } else if (status.contains("已关闭") || status.contains("停止")) {
-        icon = &trayIcons_["stopped"];
-    } else {
-        icon = &trayIcons_["other"];
-    }
-
-    trayIcon_->setIcon(*icon);
+    // 根据状态设置 tooltip，图标保持统一的应用图标
+    // 避免使用自定义 QPixmap（在某些平台/主题下会显示为黑色方块）
     trayIcon_->setToolTip(QString("Impress Voice Input - %1").arg(status));
-}
-
-QPixmap MainWindow::createTrayIcon(const QColor& color) {
-    const int size = 16;
-    QImage image(size, size, QImage::Format_ARGB32);
-    image.fill(Qt::transparent);
-
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    painter.setBrush(color);
-    painter.setPen(Qt::NoPen);
-    int margin = 1;
-    painter.drawEllipse(margin, margin, size - 2 * margin, size - 2 * margin);
-
-    return QPixmap::fromImage(image);
 }
 
 void MainWindow::setupMenuBar() {
