@@ -45,6 +45,7 @@ MainWindow::MainWindow(ConfigManager* configManager,
     connect(voiceInputService_, &VoiceInputService::statusChanged,
             this, [this](const QString& status) {
                 LOG_DEBUG(kTag, QString("语音输入状态: %1").arg(status));
+                updateTrayIcon(status);
             });
     connect(voiceInputService_, &VoiceInputService::error,
             this, [this](const QString& err) {
