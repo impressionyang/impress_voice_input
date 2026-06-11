@@ -42,33 +42,9 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
 {
     impl_->sttEngine = sttEngine;
 
-    // 1s 定时器：确认长按 → 开始正式录音（CapsLock 灯保持 ON，识别后复位）
+    // 确认长按定时器 → 直接进入 Recording，消除 1s 延迟
     longPressTimer_ = new QTimer(this);
     longPressTimer_->setSingleShot(true);
-    connect(longPressTimer_, &QTimer::timeout, this, [this]() {
-        if (state_ == PreRecording) {
-            state_ = Recording;
-            audioBuffer_.clear(); // 清除预录音期间的静音
-            emit statusChanged("正在录音...");
-
-            // 统计按键到录音延迟
-            if (latencyTracking_ && hotkeyLatencyTimer_.isValid()) {
-                qint64 latencyMs = hotkeyLatencyTimer_.elapsed();
-                totalKeyCount_++;
-                totalLatencyMs_ += latencyMs;
-                maxLatencyMs_ = std::max(maxLatencyMs_, (double)latencyMs);
-                minLatencyMs_ = std::min(minLatencyMs_, (double)latencyMs);
-                double avgMs = totalLatencyMs_ / totalKeyCount_;
-                LOG_INFO(kTag, QString("⏱ 按键→录音延迟: %1ms (平均: %2ms, 最小: %3ms, 最大: %4ms, 累计: %5次)")
-                    .arg(latencyMs).arg(avgMs, 0, 'f', 0)
-                    .arg(minLatencyMs_, 0, 'f', 0).arg(maxLatencyMs_, 0, 'f', 0)
-                    .arg(totalKeyCount_));
-                latencyTracking_ = false;
-            }
-
-            LOG_DEBUG(kTag, "PreRecording → Recording (灯保持 ON，开始录音)");
-        }
-    });
 
     // 松开后冷却定时器
     cooldownTimer_ = new QTimer(this);
@@ -163,31 +139,35 @@ void VoiceInputService::onHotkeyActivated() {
         return;
     }
 
-    // PreRecording 重复触发：忽略
-    if (state_ == PreRecording) {
-        LOG_DEBUG(kTag, "忽略重复 Activated (PreRecording 防抖)");
-        return;
-    }
-
-    // Idle → PreRecording（灯亮，预录音）
-    state_ = PreRecording;
+    // Idle → 直接进入 Recording，消除 1s 延迟
+    state_ = Recording;
     recording_ = true;
     audioBuffer_.clear();
-
-    // 启动延迟统计
-    hotkeyLatencyTimer_.start();
-    latencyTracking_ = true;
 
     int deviceIndex = configManager_->get("audio.input_device").toInt();
     int sampleRate = configManager_->get("stt.sample_rate").toInt();
     int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
     impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
 
-    // 启动 1s 定时器：灯灭 → 正式录音
-    longPressTimer_->start(longPressThreshold_);
+    // 延迟统计（现在应该接近 0）
+    hotkeyLatencyTimer_.start();
+    latencyTracking_ = true;
+    qint64 latencyMs = 0;
 
-    LOG_DEBUG(kTag, "Idle → PreRecording (灯亮)");
-    emit statusChanged("等待长按确认...");
+    LOG_DEBUG(kTag, "Idle → Recording (立即开始录音)");
+    emit statusChanged("正在录音...");
+
+    // 统计打印
+    totalKeyCount_++;
+    totalLatencyMs_ += latencyMs;
+    maxLatencyMs_ = std::max(maxLatencyMs_, (double)latencyMs);
+    minLatencyMs_ = std::min(minLatencyMs_, (double)latencyMs);
+    double avgMs = totalLatencyMs_ / totalKeyCount_;
+    LOG_INFO(kTag, QString("⏱ 按键→录音延迟: %1ms (平均: %2ms, 最小: %3ms, 最大: %4ms, 累计: %5次)")
+        .arg(latencyMs).arg(avgMs, 0, 'f', 0)
+        .arg(minLatencyMs_, 0, 'f', 0).arg(maxLatencyMs_, 0, 'f', 0)
+        .arg(totalKeyCount_));
+    latencyTracking_ = false;
 }
 
 void VoiceInputService::onHotkeyDeactivated() {
@@ -205,15 +185,11 @@ void VoiceInputService::onHotkeyDeactivated() {
         impl_->audioCapture->stop();
     }
 
-    if (state_ == PreRecording) {
-        // 短按 → 恢复 CapsLock 灯
+    if (state_ == Recording) {
+        // 松开 → 先恢复 CapsLock 灯，再开始识别
         simulateCapsLock();
         state_ = Idle;
-        LOG_DEBUG(kTag, "短按，恢复 CapsLock 灯");
-    } else if (state_ == Recording) {
-        // 长按后松开 → 灯保持 ON，等待识别完成后复位
-        state_ = Idle;
-        LOG_DEBUG(kTag, "Recording → Idle (松开转写，灯保持 ON)");
+        LOG_DEBUG(kTag, "Recording → Idle (松开转写)");
         stopRecordingAndTranscribe();
     }
 

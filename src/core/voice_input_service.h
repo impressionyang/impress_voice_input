@@ -18,20 +18,18 @@ class ConfigManager;
 /**
  * @brief CapsLock 语音输入服务
  *
- * CapsLock 灯作为录音状态指示器：
- *   按下 → 灯亮 (PreRecording) → 1s 后开始正式录音 (Recording，灯保持亮)
+ * 流程：
+ *   按下 CapsLock → 立即开始录音（Recording）
  *   → 松开 → 识别 → 注入文本 → 复位 CapsLock 灯
  *
- * 状态完全通过托盘图标指示：
+ * 托盘图标指示：
  *   绿色 ○ — 就绪（静默）
- *   黄色 ○ — 等待长按确认
  *   红色 ● — 正在录音
  *   橙色 ◉ — 正在识别
  *
  * 状态机：
  *   Idle          — 空闲
- *   PreRecording  — 按下，灯亮，等待长按确认
- *   Recording     — 1s 后正式录音（屏蔽 Portal 信号，灯保持亮）
+ *   Recording     — 按键按下，正式录音（屏蔽后续 Activated 信号）
  *   Cooldown      — 松开后冷却，防止误触
  */
 class VoiceInputService : public QObject {
