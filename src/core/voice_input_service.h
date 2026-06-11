@@ -17,12 +17,11 @@ class ConfigManager;
 /**
  * @brief CapsLock 语音输入服务
  *
- * 协调全局快捷键、音频采集、STT 推理和文本注入。
- * 状态机：
- * 1. 按下 CapsLock → 开始预录音
- * 2. 长按超过阈值（默认 1s）→ 立即复位 CapsLock，正式录音
- * 3. 松开 CapsLock → 停止录音 → 推理 → 注入文本
- * 4. 短按（< 阈值）→ 注入 CapsLock 按键（切换大小写）
+ * 状态机（防止 CapsLock 抖动/误触）：
+ *  Idle          — 空闲，等待按键
+ *  PreRecording  — 按下 CapsLock，预录音，等待长按确认
+ *  Recording     — 长按 1s 确认，正式录音（屏蔽所有 Portal 信号）
+ *  Cooldown      — 松开后冷却期，防止立即重新触发
  */
 class VoiceInputService : public QObject {
     Q_OBJECT
@@ -60,25 +59,23 @@ private slots:
     void onRecognitionComplete(const QString& text);
 
 private:
+    enum State { Idle, PreRecording, Recording, Cooldown };
+    State state_ = Idle;
+
     struct Impl;
     ConfigManager* configManager_ = nullptr;
     std::unique_ptr<Impl> impl_;
 
     bool running_ = false;
     bool recording_ = false;
-    bool longPressDetected_ = false;
-    bool capsResetDone_ = false;  // CapsLock 复位后忽略重复 Activated
-    bool cooldownActive_ = false;  // 松开后的冷却期，防止立即重新触发
-    int longPressThreshold_ = 1000;  // 1s 启动录音
-    int capsResetDelayMs_ = 3000;    // 3s 后复位 CapsLock 灯
-    int releaseCooldownMs_ = 1000;   // 松开后冷却时间
+    int longPressThreshold_ = 1000;
+    int releaseCooldownMs_ = 1000;
 
     std::vector<float> audioBuffer_;
     int audioSampleRate_ = 16000;
 
-    QTimer* longPressTimer_ = nullptr;   // 1s 启动录音
-    QTimer* capsResetTimer_ = nullptr;   // 3s 复位 CapsLock 灯
-    QTimer* cooldownTimer_ = nullptr;    // 松开后冷却
+    QTimer* longPressTimer_ = nullptr;
+    QTimer* cooldownTimer_ = nullptr;
 
     void startRecording();
     void stopRecordingAndTranscribe();
