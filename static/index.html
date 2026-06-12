@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Impress Voice Input — 基于 ONNX 的实时语音转文本输入法</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%232a6496' stroke='%231a4a70' stroke-width='2'/><circle cx='16' cy='16' r='8' fill='none' stroke='%23fff' stroke-width='2'/></svg>">
+<style>
+/* ========== Reset & Base ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #1a1a2e; background: #fff; line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: #2a6496; text-decoration: none; transition: color .2s; }
+a:hover { color: #1a4a70; }
+img { max-width: 100%; height: auto; }
+
+/* ========== Utility ========== */
+.container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+.section { padding: 80px 0; }
+.section-title {
+  font-size: 2rem; font-weight: 700; text-align: center;
+  margin-bottom: 12px; color: #1a1a2e;
+}
+.section-subtitle {
+  font-size: 1.1rem; text-align: center; color: #666;
+  max-width: 640px; margin: 0 auto 48px;
+}
+
+/* ========== Navigation ========== */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(255,255,255,0.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid #e8e8e8; transition: box-shadow .3s;
+}
+.nav.scrolled { box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  max-width: 1100px; margin: 0 auto; padding: 0 24px; height: 60px;
+}
+.nav-logo { font-size: 1.15rem; font-weight: 700; color: #1a1a2e; }
+.nav-logo span { color: #2a6496; }
+.nav-links { display: flex; gap: 28px; list-style: none; }
+.nav-links a { color: #444; font-size: .95rem; font-weight: 500; }
+.nav-links a:hover { color: #2a6496; }
+
+/* ========== Hero ========== */
+.hero {
+  padding: 160px 0 100px; text-align: center;
+  background: linear-gradient(180deg, #f0f6ff 0%, #fff 100%);
+}
+.hero-badge {
+  display: inline-block; padding: 4px 16px; border-radius: 20px;
+  background: #e8f0fe; color: #2a6496; font-size: .85rem; font-weight: 600;
+  margin-bottom: 24px;
+}
+.hero h1 {
+  font-size: 3.2rem; font-weight: 800; line-height: 1.2;
+  margin-bottom: 20px; color: #1a1a2e;
+}
+.hero h1 span {
+  background: linear-gradient(135deg, #2a6496, #4a90d9);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-desc {
+  font-size: 1.2rem; color: #555; max-width: 600px; margin: 0 auto 36px;
+}
+.hero-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 28px; border-radius: 10px; font-size: 1rem;
+  font-weight: 600; border: none; cursor: pointer; transition: all .2s;
+}
+.btn-primary {
+  background: linear-gradient(135deg, #2a6496, #3a84c6);
+  color: #fff; box-shadow: 0 4px 16px rgba(42,100,150,0.3);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(42,100,150,0.4); color: #fff; }
+.btn-secondary {
+  background: #fff; color: #2a6496; border: 2px solid #d0e0f0;
+}
+.btn-secondary:hover { border-color: #2a6496; background: #f0f6ff; color: #2a6496; }
+.hero-icon {
+  margin-top: 48px;
+  display: flex; justify-content: center;
+}
+.hero-visual {
+  width: 520px; max-width: 90vw; height: 300px; margin: 0 auto;
+  background: #fff; border-radius: 16px; box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+  overflow: hidden; position: relative;
+}
+.hero-visual .topbar {
+  height: 40px; background: #f5f5f5; display: flex; align-items: center;
+  padding: 0 16px; gap: 8px;
+}
+.hero-visual .dot { width: 12px; height: 12px; border-radius: 50%; }
+.hero-visual .dot:nth-child(1) { background: #ff5f57; }
+.hero-visual .dot:nth-child(2) { background: #febc2e; }
+.hero-visual .dot:nth-child(3) { background: #28c840; }
+.hero-visual .content { padding: 20px; }
+.hero-visual .tab-bar { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e8e8e8; }
+.hero-visual .tab { padding: 8px 20px; font-size: 13px; color: #888; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.hero-visual .tab.active { color: #2a6496; border-color: #2a6496; font-weight: 600; }
+.hero-visual .waveform {
+  display: flex; align-items: center; gap: 3px; height: 60px; margin-bottom: 16px;
+}
+.hero-visual .bar {
+  width: 4px; border-radius: 2px; background: linear-gradient(180deg, #2a6496, #6ab0e6);
+  animation: wave 1.5s ease-in-out infinite;
+}
+@keyframes wave {
+  0%, 100% { height: 12px; }
+  50% { height: var(--h, 40px); }
+}
+.hero-visual .result {
+  font-size: 14px; color: #333; background: #f8f9fa; border-radius: 8px;
+  padding: 12px; min-height: 40px;
+}
+.hero-visual .status-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 28px;
+  background: #f5f5f5; display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 16px; font-size: 11px; color: #27ae60; font-weight: 600;
+}
+
+/* ========== Features ========== */
+.features { background: #fafbfd; }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.feature-card {
+  background: #fff; border-radius: 14px; padding: 32px 28px;
+  border: 1px solid #e8e8e8; transition: all .3s;
+}
+.feature-card:hover { border-color: #c0d8f0; box-shadow: 0 8px 32px rgba(42,100,150,0.08); transform: translateY(-4px); }
+.feature-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: linear-gradient(135deg, #e8f0fe, #d0e4f8);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px; font-size: 1.5rem;
+}
+.feature-card h3 { font-size: 1.15rem; margin-bottom: 10px; color: #1a1a2e; }
+.feature-card p { font-size: .95rem; color: #666; line-height: 1.6; }
+
+/* ========== How it works ========== */
+.steps { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; }
+.step {
+  flex: 1; min-width: 200px; max-width: 260px; text-align: center; position: relative;
+}
+.step-num {
+  width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 16px;
+  background: linear-gradient(135deg, #2a6496, #4a90d9);
+  color: #fff; font-size: 1.2rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.step h4 { font-size: 1.05rem; margin-bottom: 8px; color: #1a1a2e; }
+.step p { font-size: .9rem; color: #666; }
+
+/* ========== Tech Stack ========== */
+.tech { background: #fafbfd; }
+.tech-table {
+  width: 100%; max-width: 700px; margin: 0 auto;
+  border-collapse: collapse; background: #fff; border-radius: 12px;
+  overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+.tech-table th, .tech-table td {
+  padding: 14px 20px; text-align: left; border-bottom: 1px solid #f0f0f0;
+}
+.tech-table th { background: #f5f7fa; font-weight: 600; color: #444; font-size: .9rem; }
+.tech-table td { font-size: .95rem; color: #333; }
+.tech-table td:last-child { color: #666; }
+
+/* ========== Download ========== */
+.download-cards { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.download-card {
+  background: #fff; border-radius: 14px; padding: 36px 32px;
+  border: 1px solid #e8e8e8; text-align: center; min-width: 280px; flex: 1; max-width: 380px;
+}
+.download-card h3 { font-size: 1.3rem; margin-bottom: 8px; }
+.download-card .size { font-size: .9rem; color: #888; margin-bottom: 20px; }
+.download-card .files { text-align: left; margin-bottom: 24px; }
+.download-card .files li {
+  list-style: none; padding: 6px 0; font-size: .9rem; color: #555;
+  border-bottom: 1px solid #f0f0f0;
+}
+.download-card .files li:last-child { border: none; }
+.download-card .files code {
+  background: #f0f4f8; padding: 2px 6px; border-radius: 4px;
+  font-size: .85rem; color: #2a6496;
+}
+
+/* ========== FAQ ========== */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid #e8e8e8; padding: 20px 0;
+}
+.faq-item h4 {
+  font-size: 1.05rem; color: #1a1a2e; margin-bottom: 8px;
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+}
+.faq-item h4::after {
+  content: '+'; font-size: 1.3rem; color: #aaa; transition: transform .3s;
+}
+.faq-item.open h4::after { content: '−'; }
+.faq-item p {
+  font-size: .95rem; color: #666; line-height: 1.7;
+  max-height: 0; overflow: hidden; transition: max-height .4s ease, padding .3s;
+}
+.faq-item.open p { max-height: 300px; padding-top: 8px; }
+
+/* ========== Footer ========== */
+.footer {
+  background: #1a1a2e; color: #aaa; text-align: center; padding: 40px 0;
+}
+.footer a { color: #6ab0e6; }
+.footer p { font-size: .9rem; margin-bottom: 8px; }
+.footer .license { font-size: .85rem; color: #777; }
+
+/* ========== Responsive ========== */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 2.2rem; }
+  .hero-desc { font-size: 1rem; }
+  .features-grid { grid-template-columns: 1fr; }
+  .section { padding: 60px 0; }
+  .section-title { font-size: 1.6rem; }
+  .nav-links { display: none; }
+  .steps { flex-direction: column; align-items: center; }
+}
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <div class="nav-logo">Impress <span>Voice Input</span></div>
+    <ul class="nav-links">
+      <li><a href="#features">功能</a></li>
+      <li><a href="#how-it-works">使用方法</a></li>
+      <li><a href="#tech">技术栈</a></li>
+      <li><a href="#download">下载</a></li>
+      <li><a href="#faq">常见问题</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">开源 · 跨平台 · 本地推理</div>
+    <h1>让语音输入<br><span>更高效、更自由</span></h1>
+    <p class="hero-desc">基于 SenseVoice + ONNX Runtime 的实时语音转文本输入法，完全本地运行，无需联网。</p>
+    <div class="hero-buttons">
+      <a href="#download" class="btn btn-primary">⬇ 立即下载</a>
+      <a href="#features" class="btn btn-secondary">了解更多</a>
+    </div>
+    <div class="hero-icon">
+      <div class="hero-visual">
+        <div class="topbar">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+        <div class="content">
+          <div class="tab-bar">
+            <div class="tab active">实时语音识别</div>
+            <div class="tab">音频文件转写</div>
+            <div class="tab">配置</div>
+          </div>
+          <div class="waveform" id="waveform"></div>
+          <div class="result" id="typingResult"></div>
+        </div>
+        <div class="status-bar">● 模型已就绪</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features section" id="features">
+  <div class="container">
+    <h2 class="section-title">核心功能</h2>
+    <p class="section-subtitle">从实时语音识别到文件转写，满足各种语音输入场景</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🎙️</div>
+        <h3>实时语音识别</h3>
+        <p>长按 CapsLock 开始录音，松开后自动识别，文字实时注入到当前应用中，支持微信、Word、浏览器等。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📁</div>
+        <h3>音频文件转写</h3>
+        <p>支持 WAV/MP3/FLAC/OGG 格式，批量处理音频文件，导出为 TXT 文本或 SRT 字幕格式。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>完全本地运行</h3>
+        <p>基于 ONNX Runtime 本地推理，所有语音数据不会离开您的设备，保护隐私安全。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3>多语言支持</h3>
+        <p>SenseVoice 模型支持中文、英文、日语、韩语、粤语等多语言自动识别。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⌨️</div>
+        <h3>CapsLock 快捷键</h3>
+        <p>长按超过 1 秒触发语音输入，短按正常切换大小写，无缝融入日常操作习惯。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎨</div>
+        <h3>深色 / 浅色主题</h3>
+        <p>支持深色和浅色界面切换，可自定义字体大小，打造舒适的视觉体验。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <h2 class="section-title">使用流程</h2>
+    <p class="section-subtitle">简单几步，开始使用语音输入</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h4>下载运行</h4>
+        <p>下载对应平台的压缩包，解压后直接运行，无需安装。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h4>加载模型</h4>
+        <p>下载 SenseVoice ONNX 模型，在配置页面设置模型路径并保存。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h4>开始说话</h4>
+        <p>将光标定位到目标应用，长按 CapsLock 说话，松开后文字自动输入。</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h4>文件转写</h4>
+        <p>切换到文件转写页面，选择音频文件，一键转写并导出结果。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tech Stack -->
+<section class="tech section" id="tech">
+  <div class="container">
+    <h2 class="section-title">技术栈</h2>
+    <p class="section-subtitle">高性能、跨平台的技术选型</p>
+    <table class="tech-table">
+      <thead>
+        <tr><th>组件</th><th>技术选型</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>GUI 框架</td><td>Qt 6（Fusion / Windows 原生风格）</td></tr>
+        <tr><td>推理引擎</td><td>ONNX Runtime（C++ API）</td></tr>
+        <tr><td>语音模型</td><td>SenseVoice Small</td></tr>
+        <tr><td>音频采集</td><td>PortAudio</td></tr>
+        <tr><td>音频解码</td><td>dr_libs（dr_wav / dr_mp3 / dr_flac）</td></tr>
+        <tr><td>构建系统</td><td>CMake 3.20+</td></tr>
+        <tr><td>配置存储</td><td>nlohmann/json</td></tr>
+        <tr><td>支持平台</td><td>Windows / Linux</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Download -->
+<section class="section" id="download">
+  <div class="container">
+    <h2 class="section-title">下载</h2>
+    <p class="section-subtitle">选择适合您平台的版本</p>
+    <div class="download-cards">
+      <div class="download-card">
+        <h3>🪟 Windows</h3>
+        <div class="size">约 47 MB</div>
+        <ul class="files">
+          <li><code>impress_voice_input_windows.zip</code></li>
+          <li>包含全部运行依赖 DLL</li>
+          <li>解压后进入 dist_win/ 运行 .exe</li>
+        </ul>
+        <a href="https://gitea.impressionyang.top/impressionyang/impress_voice_input/releases" class="btn btn-primary" target="_blank">前往下载</a>
+      </div>
+      <div class="download-card">
+        <h3>🐧 Linux</h3>
+        <div class="size">约 34 MB</div>
+        <ul class="files">
+          <li><code>impress_voice_input_linux.tar.gz</code></li>
+          <li>包含 Qt6 + ONNX + PortAudio 运行库</li>
+          <li>解压后运行 ./run.sh</li>
+        </ul>
+        <a href="https://gitea.impressionyang.top/impressionyang/impress_voice_input/releases" class="btn btn-primary" target="_blank">前往下载</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" id="faq" style="background:#fafbfd;">
+  <div class="container">
+    <h2 class="section-title">常见问题</h2>
+    <p class="section-subtitle">使用过程中的常见问题解答</p>
+    <div class="faq-list">
+      <div class="faq-item">
+        <h4>语音输入没有反应？</h4>
+        <p>请确认：① 模型已加载（状态栏显示"模型已就绪"）；② 已设置语音快捷键；③ 麦克风正常工作。</p>
+      </div>
+      <div class="faq-item">
+        <h4>识别文字没有输入到目标应用？</h4>
+        <p>某些应用可能拦截模拟按键输入，请尝试在管理员权限下运行本程序。</p>
+      </div>
+      <div class="faq-item">
+        <h4>识别速度慢？</h4>
+        <p>在配置中增大 ONNX 线程数（建议 2-4），或使用 GPU 版本的 ONNX Runtime。</p>
+      </div>
+      <div class="faq-item">
+        <h4>CapsLock 短按不起作用？</h4>
+        <p>请确保按键时间小于 1 秒，超过 1 秒会触发语音输入模式。</p>
+      </div>
+      <div class="faq-item">
+        <h4>从哪里下载模型？</h4>
+        <p>访问 <a href="https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tree/main" target="_blank">HuggingFace 模型仓库</a>，下载 model.int8.onnx 和 tokens.txt 两个文件。</p>
+      </div>
+      <div class="faq-item">
+        <h4>数据安全吗？</h4>
+        <p>完全本地运行，所有语音识别都在您的设备上完成，数据不会上传到任何服务器。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <p><strong>Impress Voice Input</strong> — 基于 ONNX 的实时语音转文本输入法</p>
+    <p class="license">© 2026 Impress. 根据 <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank">GNU GPLv3</a> 协议开源。</p>
+    <p class="license">源码：<a href="https://gitea.impressionyang.top/impressionyang/impress_voice_input" target="_blank">Gitea 仓库</a></p>
+  </div>
+</footer>
+
+<script>
+// Navigation scroll effect
+window.addEventListener('scroll', function() {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+});
+
+// Waveform animation
+(function() {
+  var container = document.getElementById('waveform');
+  if (!container) return;
+  for (var i = 0; i < 80; i++) {
+    var bar = document.createElement('div');
+    bar.className = 'bar';
+    var h = 15 + Math.random() * 45;
+    bar.style.setProperty('--h', h + 'px');
+    bar.style.animationDelay = (i * 0.03) + 's';
+    container.appendChild(bar);
+  }
+})();
+
+// Typing effect
+(function() {
+  var el = document.getElementById('typingResult');
+  if (!el) return;
+  var texts = [
+    '今天天气真好，适合出去走走。',
+    '帮我写一封邮件给张经理，确认会议时间。',
+    '打开浏览器搜索"ONNX Runtime 最佳实践"。',
+    '明天上午十点记得提醒我开产品评审会。'
+  ];
+  var idx = 0, charIdx = 0, current = '';
+  function type() {
+    if (charIdx < texts[idx].length) {
+      current += texts[idx][charIdx];
+      charIdx++;
+      el.textContent = current;
+      setTimeout(type, 50 + Math.random() * 60);
+    } else {
+      setTimeout(function() {
+        current = '';
+        charIdx = 0;
+        idx = (idx + 1) % texts.length;
+        el.textContent = '';
+        setTimeout(type, 400);
+      }, 2500);
+    }
+  }
+  setTimeout(type, 800);
+})();
+
+// FAQ accordion
+document.querySelectorAll('.faq-item h4').forEach(function(h4) {
+  h4.addEventListener('click', function() {
+    var item = h4.parentElement;
+    var wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(function(el) { el.classList.remove('open'); });
+    if (!wasOpen) item.classList.add('open');
+  });
+});
+</script>
+</body>
+</html>
