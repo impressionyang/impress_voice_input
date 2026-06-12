@@ -39,6 +39,9 @@ public:
     /** @brief 设置日志文件路径（运行时切换） */
     static void setLogFile(const QString& path);
 
+    /** @brief 清空日志文件内容（线程安全） */
+    static void clearLogFile();
+
 private:
     static QString levelToString(LogLevel level);
     static QString getTimestamp();

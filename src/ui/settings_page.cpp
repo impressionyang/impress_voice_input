@@ -411,24 +411,9 @@ void SettingsPage::onResetConfig() {
 }
 
 void SettingsPage::onClearLogs() {
-    // 使用与 Logger 相同的路径逻辑
-    QString logDir = configManager_->get("app.log_dir").toString();
-    if (logDir.isEmpty()) {
-        logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    }
-
-    auto result = clearDirectoryFiles(logDir, {"*.log"}, "日志文件", TruncateMode);
-    if (result.deletedCount < 0) {
-        QMessageBox::warning(this, "清除日志", "清除失败，请检查目录权限");
-        return;
-    }
-    if (result.deletedCount == 0) {
-        QMessageBox::information(this, "清除日志", "没有可清除的日志文件");
-        return;
-    }
-    QMessageBox::information(this, "清除日志",
-        QString("已清空 %1 个日志文件的内容，释放 %2 KB 空间")
-            .arg(result.deletedCount).arg(result.freedBytes / 1024));
+    Logger::clearLogFile();
+    LOG_INFO(kTag, "日志文件已通过 Logger 清空");
+    QMessageBox::information(this, "清除日志", "日志文件已清空");
     statusLabel_->setText("日志文件已清空");
 }
 

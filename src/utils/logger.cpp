@@ -60,6 +60,15 @@ void Logger::setLogFile(const QString& path) {
     }
 }
 
+void Logger::clearLogFile() {
+    QMutexLocker locker(&mutex_);
+    if (logFile_ && logFile_->isOpen()) {
+        logFile_->flush();
+        logFile_->resize(0);
+        logFile_->seek(0);
+    }
+}
+
 void Logger::log(LogLevel level, const QString& tag, const QString& message) {
     QMutexLocker locker(&mutex_);
     QString logLine = QString("[%1] [%2] [%3] %4")
