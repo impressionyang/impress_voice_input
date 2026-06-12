@@ -24,7 +24,10 @@
 #include <QTimer>
 #include <QTabBar>
 #include <QProcess>
+#include <QDialog>
+#include <QVBoxLayout>
 #include <QTextBrowser>
+#include <QPushButton>
 #ifdef Q_OS_WIN
 #include <windows.h>
 
@@ -331,13 +334,11 @@ void MainWindow::doRestart() {
     }
 
     QString appPath = qApp->applicationFilePath();
-#ifdef Q_OS_WIN
-    // Windows 使用 cmd /c start 启动，避免阻塞
-    QProcess::startDetached("cmd", {"/c", "start", "", "\"" + appPath + "\""});
-#else
-    QProcess::startDetached(appPath, {});
-#endif
-
+    QString workDir = qApp->applicationDirPath();
+    bool ok = QProcess::startDetached(appPath, {}, workDir);
+    if (!ok) {
+        LOG_ERROR(kTag, QString("重启失败: 无法启动 %1").arg(appPath));
+    }
     qApp->quit();
 }
 
@@ -351,7 +352,7 @@ void MainWindow::showUsage() {
 
         "<h3>二、快捷键操作</h3>"
         "<table cellpadding='4' cellspacing='0'>"
-        "<tr><td><b>语音输入</b></td><td>默认 F8（可在配置中自定义）</td></tr>"
+        "<tr><td><b>语音输入</b></td><td>长按 CapsLock 超过 1 秒（可在配置中自定义）</td></tr>"
         "<tr><td><b>使用说明</b></td><td>F1</td></tr>"
         "<tr><td><b>重启应用</b></td><td>Ctrl+R</td></tr>"
         "<tr><td><b>退出应用</b></td><td>Ctrl+Q</td></tr>"
@@ -360,11 +361,12 @@ void MainWindow::showUsage() {
         "<h3>三、语音输入使用流程</h3>"
         "<ol>"
         "<li>在<b>配置</b>页面中设置正确的 STT 模型路径并保存。</li>"
-        "<li>设置语音输入快捷键（如 F8）。</li>"
+        "<li>设置语音输入快捷键（默认长按 CapsLock）。</li>"
         "<li>将光标定位到需要输入文字的目标应用（如微信、Word、浏览器等）。</li>"
-        "<li>按下快捷键开始说话，说完后再次按下快捷键停止。</li>"
+        "<li>长按快捷键开始说话，说完后松开快捷键。</li>"
         "<li>识别的文字将通过模拟按键自动输入到目标应用中。</li>"
         "</ol>"
+        "<p><b>CapsLock 工作模式：</b>短按（&lt;1 秒）正常切换大小写锁定；长按（&gt;1 秒）触发语音输入，松开后自动识别并注入文字。</p>"
 
         "<h3>四、文件转写使用流程</h3>"
         "<ol>"
@@ -404,18 +406,41 @@ void MainWindow::showUsage() {
 
         "<h3>八、常见问题</h3>"
         "<p><b>Q: 语音输入没有反应？</b><br/>"
-        "A: 请确认：① 模型已加载（状态栏显示<span style='color:#27ae60;font-weight:bold'>模型已就绪</span>）；② 已设置语音快捷键；③ 麦克风正常工作。</p>"
+        "A: 请确认：① 模型已加载（状态栏显示<span style='color:#27ae60;font-weight:bold'>模型已就绪</span>）；"
+        "② 已设置语音快捷键；③ 麦克风正常工作。</p>"
         "<p><b>Q: 识别文字没有输入到目标应用？</b><br/>"
         "A: 某些应用可能拦截模拟按键输入，请尝试在管理员权限下运行本程序。</p>"
         "<p><b>Q: 识别速度慢？</b><br/>"
-        "A: 在配置中增大 ONNX 线程数，或使用 GPU 版本的 ONNX Runtime。</p>";
+        "A: 在配置中增大 ONNX 线程数，或使用 GPU 版本的 ONNX Runtime。</p>"
+        "<p><b>Q: CapsLock 短按不起作用？</b><br/>"
+        "A: 请确保按键时间小于 1 秒，超过 1 秒会触发语音输入模式。</p>";
 
-    QMessageBox msgBox(this);
-    msgBox.setWindowTitle("使用说明");
-    msgBox.setTextFormat(Qt::RichText);
-    msgBox.setText(usageText);
-    msgBox.setIcon(QMessageBox::Information);
-    msgBox.exec();
+    // 使用可调整大小、可滚动的 QDialog 替代 QMessageBox
+    QDialog* dialog = new QDialog(this);
+    dialog->setWindowTitle("使用说明");
+    dialog->resize(650, 550);
+    dialog->setMinimumSize(400, 300);
+
+    auto* layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    auto* textBrowser = new QTextBrowser(dialog);
+    textBrowser->setOpenExternalLinks(false);
+    textBrowser->setHtml(usageText);
+    layout->addWidget(textBrowser);
+
+    // 底部关闭按钮
+    auto* btnLayout = new QHBoxLayout();
+    btnLayout->addStretch();
+    auto* closeBtn = new QPushButton("关闭", dialog);
+    closeBtn->setMinimumWidth(80);
+    btnLayout->addWidget(closeBtn);
+    layout->addLayout(btnLayout);
+
+    connect(closeBtn, &QPushButton::clicked, dialog, &QDialog::accept);
+
+    dialog->exec();
+    dialog->deleteLater();
 }
 
 void MainWindow::updateModelStatus() {
