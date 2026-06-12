@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QFile>
 
 class QFormLayout;
 class QLineEdit;
@@ -39,6 +40,8 @@ private slots:
     void onClearAudioFiles();
 
 private:
+    enum ClearMode { TruncateMode, DeleteMode };
+
     struct CleanupResult {
         int deletedCount;
         qint64 freedBytes;
@@ -50,7 +53,8 @@ private:
     void populateAudioDevices();
     void selectAudioDevice(int deviceIndex);
     int getSelectedAudioDeviceIndex() const;
-    CleanupResult clearDirectoryFiles(const QString& dirPath, const QStringList& filters, const QString& desc);
+    CleanupResult clearDirectoryFiles(const QString& dirPath, const QStringList& filters,
+                                      const QString& desc, ClearMode mode);
 
     ConfigManager* configManager_;
 

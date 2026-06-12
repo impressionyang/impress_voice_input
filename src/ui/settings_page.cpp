@@ -411,18 +411,13 @@ void SettingsPage::onResetConfig() {
 }
 
 void SettingsPage::onClearLogs() {
+    // 使用与 Logger 相同的路径逻辑
     QString logDir = configManager_->get("app.log_dir").toString();
     if (logDir.isEmpty()) {
         logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     }
 
-    QDir dir(logDir);
-    if (!dir.exists()) {
-        QMessageBox::information(this, "清除日志", "日志目录不存在：" + logDir);
-        return;
-    }
-
-    auto result = clearDirectoryFiles(logDir, {"*.log"}, "日志文件");
+    auto result = clearDirectoryFiles(logDir, {"*.log"}, "日志文件", TruncateMode);
     if (result.deletedCount < 0) {
         QMessageBox::warning(this, "清除日志", "清除失败，请检查目录权限");
         return;
@@ -432,9 +427,9 @@ void SettingsPage::onClearLogs() {
         return;
     }
     QMessageBox::information(this, "清除日志",
-        QString("已清除 %1 个日志文件，释放 %2 KB 空间")
+        QString("已清空 %1 个日志文件的内容，释放 %2 KB 空间")
             .arg(result.deletedCount).arg(result.freedBytes / 1024));
-    statusLabel_->setText("日志文件已清除");
+    statusLabel_->setText("日志文件已清空");
 }
 
 void SettingsPage::onClearAudioFiles() {
@@ -443,13 +438,7 @@ void SettingsPage::onClearAudioFiles() {
         audioDir = QDir::tempPath() + "/impress_audio_debug";
     }
 
-    QDir dir(audioDir);
-    if (!dir.exists()) {
-        QMessageBox::information(this, "清除录音", "录音文件目录不存在：" + audioDir);
-        return;
-    }
-
-    auto result = clearDirectoryFiles(audioDir, {"*.wav"}, "录音文件");
+    auto result = clearDirectoryFiles(audioDir, {"*.wav"}, "录音文件", DeleteMode);
     if (result.deletedCount < 0) {
         QMessageBox::warning(this, "清除录音", "清除失败，请检查目录权限");
         return;
@@ -459,13 +448,14 @@ void SettingsPage::onClearAudioFiles() {
         return;
     }
     QMessageBox::information(this, "清除录音",
-        QString("已清除 %1 个录音文件，释放 %2 KB 空间")
+        QString("已删除 %1 个录音文件，释放 %2 KB 空间")
             .arg(result.deletedCount).arg(result.freedBytes / 1024));
     statusLabel_->setText("录音文件已清除");
 }
 
 SettingsPage::CleanupResult SettingsPage::clearDirectoryFiles(
-        const QString& dirPath, const QStringList& filters, const QString& desc) {
+        const QString& dirPath, const QStringList& filters, const QString& desc,
+        ClearMode mode) {
     QDir dir(dirPath);
     if (!dir.exists()) return {-1, 0};
 
@@ -473,19 +463,29 @@ SettingsPage::CleanupResult SettingsPage::clearDirectoryFiles(
     if (files.isEmpty()) return {0, 0};
 
     qint64 totalSize = 0;
-    int deletedCount = 0;
+    int processedCount = 0;
 
     for (const auto& fi : files) {
         totalSize += fi.size();
-        if (dir.remove(fi.fileName())) {
-            deletedCount++;
+        bool ok = false;
+        if (mode == TruncateMode) {
+            // 清空文件内容，保留文件（避免 logger 句柄失效）
+            QFile f(fi.absoluteFilePath());
+            ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate);
+            if (ok) f.close();
+        } else {
+            // 删除文件
+            ok = dir.remove(fi.fileName());
+        }
+        if (ok) {
+            processedCount++;
         }
     }
 
-    LOG_INFO(kTag, QString("已清除 %1/%2 个%3，释放 %4 KB")
-        .arg(deletedCount).arg(files.size()).arg(desc).arg(totalSize / 1024));
+    LOG_INFO(kTag, QString("已清理 %1/%2 个%3，释放 %4 KB")
+        .arg(processedCount).arg(files.size()).arg(desc).arg(totalSize / 1024));
 
-    return {deletedCount, totalSize};
+    return {processedCount, totalSize};
 }
 
 } // namespace impress
