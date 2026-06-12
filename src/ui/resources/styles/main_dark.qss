@@ -14,6 +14,10 @@ QTabWidget::pane {
     background: #2a2a2a;
 }
 
+QTabWidget QStackedWidget {
+    background: #2a2a2a;
+}
+
 QTabBar::tab {
     background: #3a3a3a;
     border: 1px solid #555555;
@@ -68,6 +72,17 @@ QPushButton[text="保存配置"] {
 QPushButton[objectName="saveBtn"]:hover,
 QPushButton[text="保存配置"]:hover {
     background-color: #5a9aff;
+}
+
+/* 录音按钮（动态属性 recording=true） */
+QPushButton[recording="true"] {
+    background-color: #e74c3c;
+    color: #ffffff;
+    border: 1px solid #e74c3c;
+}
+
+QPushButton[recording="true"]:hover {
+    background-color: #f05e50;
 }
 
 /* 危险操作按钮 */

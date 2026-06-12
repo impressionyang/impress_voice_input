@@ -21,6 +21,50 @@
 #include <QCloseEvent>
 #include <QStyle>
 #include <QIcon>
+#include <QTimer>
+#include <QTabBar>
+#ifdef Q_OS_WIN
+#include <windows.h>
+
+// 枚举并隐藏 Qt 创建的多余工具窗口（无标题栏、无边框、非主窗口的 WS_EX_TOOLWINDOW）
+static BOOL CALLBACK HideQtToolWindows(HWND hwnd, LPARAM /*lParam*/) {
+    DWORD pid;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid != GetCurrentProcessId()) return TRUE;
+
+    LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+    LONG style = GetWindowLong(hwnd, GWL_STYLE);
+
+    // 只找 WS_EX_TOOLWINDOW 的窗口
+    if ((exStyle & WS_EX_TOOLWINDOW) == 0) return TRUE;
+
+    // 排除有标题栏的窗口
+    bool hasTitleBar = (style & WS_CAPTION) != 0;
+    if (hasTitleBar) return TRUE;
+
+    // 排除子窗口
+    if (style & WS_CHILD) return TRUE;
+
+    // 获取窗口标题
+    wchar_t title[256];
+    int len = GetWindowTextW(hwnd, title, 256);
+
+    // 排除 Qt 标题栏窗口（_q_titlebar）
+    if (len > 0 && QString::fromWCharArray(title, len).startsWith("_q_")) return TRUE;
+
+    // 找到了可疑窗口，隐藏它
+    RECT rect;
+    GetWindowRect(hwnd, &rect);
+    LOG_INFO("MainWindow", QString("发现并隐藏 Qt 内部工具窗口: HWND=%1 标题=\"%2\" 大小=%3x%4")
+        .arg((qulonglong)hwnd)
+        .arg(len > 0 ? QString::fromWCharArray(title, len) : "(无标题)")
+        .arg(rect.right - rect.left)
+        .arg(rect.bottom - rect.top));
+
+    ShowWindow(hwnd, SW_HIDE);
+    return TRUE;
+}
+#endif
 
 static const char* const kTag = "MainWindow";
 
@@ -32,18 +76,33 @@ MainWindow::MainWindow(ConfigManager* configManager,
     : QMainWindow(parent)
     , configManager_(configManager)
 {
+    LOG_INFO(kTag, "MainWindow 构造函数开始");
+
     setWindowTitle("Impress Voice Input");
     resize(1000, 700);
 
     // 设置窗口图标
     setWindowIcon(QIcon(":/icons/app_icon.png"));
+    LOG_INFO(kTag, "窗口图标已设置");
 
+    LOG_INFO(kTag, "开始 setupUI");
     setupUI(sttEngine);
+    LOG_INFO(kTag, "setupUI 完成");
+
+    LOG_INFO(kTag, "开始 setupMenuBar");
     setupMenuBar();
+    LOG_INFO(kTag, "setupMenuBar 完成");
+
+    LOG_INFO(kTag, "开始 setupStatusBar");
     setupStatusBar(sttEngine);
+    LOG_INFO(kTag, "setupStatusBar 完成");
+
+    LOG_INFO(kTag, "开始 setupTrayIcon");
     setupTrayIcon();
+    LOG_INFO(kTag, "setupTrayIcon 完成");
 
     // 初始化语音输入服务（共享全局引擎）
+    LOG_INFO(kTag, "开始创建 VoiceInputService");
     voiceInputService_ = new VoiceInputService(configManager_, sttEngine, this);
     connect(voiceInputService_, &VoiceInputService::statusChanged,
             this, [this](const QString& status) {
@@ -58,13 +117,25 @@ MainWindow::MainWindow(ConfigManager* configManager,
             this, [this](const QString& text) {
                 LOG_INFO(kTag, QString("语音识别结果: %1").arg(text));
             });
+    LOG_INFO(kTag, "VoiceInputService 已创建");
 
     // 监听配置变化，动态启停语音输入服务
     connect(configManager_, &ConfigManager::configChanged,
             this, &MainWindow::onVoiceInputConfigChanged);
 
     // 启动时检查配置
+    LOG_INFO(kTag, "开始 onVoiceInputConfigChanged");
     onVoiceInputConfigChanged();
+    LOG_INFO(kTag, "onVoiceInputConfigChanged 完成");
+
+#ifdef Q_OS_WIN
+    // 延迟隐藏 Qt 在 Windows 上创建的额外工具窗口
+    QTimer::singleShot(500, this, []() {
+        LOG_INFO(kTag, "开始检查 Qt 内部工具窗口");
+        EnumWindows(HideQtToolWindows, 0);
+        LOG_INFO(kTag, "Qt 内部工具窗口检查完成");
+    });
+#endif
 
     LOG_INFO(kTag, "主窗口已创建");
 }
@@ -72,17 +143,35 @@ MainWindow::MainWindow(ConfigManager* configManager,
 MainWindow::~MainWindow() = default;
 
 void MainWindow::setupUI(SenseVoiceEngine* sttEngine) {
+    LOG_INFO(kTag, "setupUI: 创建 QTabWidget");
     tabWidget_ = new QTabWidget(this);
 
+    // 禁用可能导致额外窗口的功能
+    tabWidget_->setDocumentMode(true);
+    tabWidget_->setTabBarAutoHide(false);
+    tabWidget_->tabBar()->setExpanding(true);
+    tabWidget_->tabBar()->setMovable(false);
+    tabWidget_->tabBar()->setDrawBase(true);
+
+    LOG_INFO(kTag, "setupUI: 创建 STTTestPage");
     sttPage_ = new STTTestPage(configManager_, sttEngine, tabWidget_);
+    LOG_INFO(kTag, "setupUI: STTTestPage 创建完成");
+
+    LOG_INFO(kTag, "setupUI: 创建 FileTranscribePage");
     transcribePage_ = new FileTranscribePage(configManager_, sttEngine, tabWidget_);
+    LOG_INFO(kTag, "setupUI: FileTranscribePage 创建完成");
+
+    LOG_INFO(kTag, "setupUI: 创建 SettingsPage");
     settingsPage_ = new SettingsPage(configManager_, tabWidget_);
+    LOG_INFO(kTag, "setupUI: SettingsPage 创建完成");
 
     tabWidget_->addTab(sttPage_, "实时语音识别");
     tabWidget_->addTab(transcribePage_, "音频文件转写");
     tabWidget_->addTab(settingsPage_, "配置");
+    LOG_INFO(kTag, "setupUI: Tab 页面已添加");
 
     setCentralWidget(tabWidget_);
+    LOG_INFO(kTag, "setupUI: 完成");
 }
 
 void MainWindow::setupStatusBar(SenseVoiceEngine* sttEngine) {

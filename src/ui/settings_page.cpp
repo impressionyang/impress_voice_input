@@ -44,6 +44,7 @@ void SettingsPage::setupUI() {
     scrollArea->setFrameShape(QFrame::NoFrame);
 
     auto* contentWidget = new QWidget(scrollArea);
+    contentWidget->setAttribute(Qt::WA_StyledBackground, true);
     auto* contentLayout = new QVBoxLayout(contentWidget);
     contentLayout->setContentsMargins(12, 8, 12, 8);
     contentLayout->setSpacing(12);
@@ -221,7 +222,7 @@ void SettingsPage::setupUI() {
     btnLayout->setContentsMargins(12, 4, 12, 8);
 
     auto* saveBtn = new QPushButton("保存配置", btnBar);
-    saveBtn->setStyleSheet("QPushButton { font-weight: bold; padding: 8px 16px; }");
+    saveBtn->setObjectName("saveBtn");
     connect(saveBtn, &QPushButton::clicked, this, &SettingsPage::onSaveConfig);
     btnLayout->addWidget(saveBtn);
 

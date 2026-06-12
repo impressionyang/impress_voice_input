@@ -1,4 +1,5 @@
 #include "audio_waveform.h"
+#include "app/application.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <algorithm>
@@ -24,8 +25,12 @@ void AudioWaveform::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
+    // 根据主题选择背景色
+    const QColor bgColor = Application::isDarkTheme()
+        ? QColor(42, 42, 42) : QColor(245, 245, 245);
+
     // 背景
-    painter.fillRect(rect(), QColor(245, 245, 245));
+    painter.fillRect(rect(), bgColor);
 
     if (samples_.isEmpty()) {
         painter.setPen(QColor(180, 180, 180));

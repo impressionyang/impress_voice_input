@@ -21,9 +21,6 @@ static const char* const kTag = "Application";
 Application::Application(int& argc, char** argv)
     : QApplication(argc, argv)
 {
-    LOG_INFO(kTag, QString("Impress Voice Input v%1 启动").arg(applicationVersion()));
-    LOG_INFO(kTag, QString("编译时间: %1 %2").arg(__DATE__).arg(__TIME__));
-
     configManager_ = std::make_unique<ConfigManager>(this);
     configManager_->loadDefaults();
 
@@ -84,8 +81,13 @@ void Application::loadGlobalModel() {
 void Application::applyTheme(const QString& theme) {
     s_currentTheme = theme;
 
-    // 1. 先设置风格（必须在 palette 和 stylesheet 之前）
+#ifdef Q_OS_WIN
+    // Windows 使用原生风格，避免 Fusion 的渲染问题
+    qApp->setStyle(QStyleFactory::create("windows"));
+#else
+    // 其他平台使用 Fusion
     qApp->setStyle(QStyleFactory::create("Fusion"));
+#endif
 
     // 2. 设置调色板
     QPalette palette;
@@ -153,7 +155,7 @@ void Application::applyFontSize(int size) {
 
 QIcon Application::createTrayIcon(bool active) {
     const QColor color = (s_currentTheme == "dark") ? Qt::white : Qt::black;
-    const int size = 16;
+    const int size = 22;
 
     QPixmap pixmap(size, size);
     pixmap.fill(Qt::transparent);
@@ -164,16 +166,19 @@ QIcon Application::createTrayIcon(bool active) {
 
     if (active) {
         // 播放图标（三角形）
-        const int margin = 3;
+        const int margin = 4;
         QPolygon triangle;
         triangle << QPoint(margin, margin)
                  << QPoint(margin, size - margin)
                  << QPoint(size - margin, size / 2);
         painter.drawPolygon(triangle);
     } else {
-        // 停止图标（正方形）
-        const int margin = 3;
-        painter.drawRect(margin, margin, size - 2 * margin, size - 2 * margin);
+        // 空闲图标（圆形轮廓，而非实心方块）
+        const int margin = 4;
+        const int radius = (size - 2 * margin) / 2;
+        const int cx = size / 2;
+        const int cy = size / 2;
+        painter.drawEllipse(QPoint(cx, cy), radius, radius);
     }
 
     return QIcon(pixmap);

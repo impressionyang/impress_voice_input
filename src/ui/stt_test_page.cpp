@@ -63,8 +63,8 @@ void STTTestPage::setupUI() {
 
     auto* btnLayout = new QHBoxLayout();
     recordBtn_ = new QPushButton("开始录音", this);
+    recordBtn_->setObjectName("recordBtn");
     recordBtn_->setMinimumWidth(120);
-    recordBtn_->setStyleSheet("QPushButton { font-weight: bold; padding: 8px 16px; }");
     connect(recordBtn_, &QPushButton::clicked, this, &STTTestPage::onToggleRecording);
     btnLayout->addWidget(recordBtn_);
 
@@ -103,10 +103,17 @@ void STTTestPage::setupUI() {
 
 void STTTestPage::updateUIState() {
     recordBtn_->setText(isRecording_ ? "停止录音" : "开始录音");
-    recordBtn_->setStyleSheet(isRecording_
-        ? "QPushButton { font-weight: bold; padding: 8px 16px; background-color: #e74c3c; color: white; }"
-        : "QPushButton { font-weight: bold; padding: 8px 16px; }");
+    recordBtn_->setProperty("recording", isRecording_);
+    recordBtn_->style()->unpolish(recordBtn_);
+    recordBtn_->style()->polish(recordBtn_);
     deviceCombo_->setEnabled(!isRecording_ && !isLoadingModel_);
+
+    // 状态标签颜色
+    if (isRecording_) {
+        statusLabel_->setStyleSheet("color: #e74c3c;");
+    } else {
+        statusLabel_->setStyleSheet("color: gray;");
+    }
 }
 
 void STTTestPage::onToggleRecording() {

@@ -13,6 +13,10 @@ QTabWidget::pane {
     background: #ffffff;
 }
 
+QTabWidget QStackedWidget {
+    background: #ffffff;
+}
+
 QTabBar::tab {
     background: #f5f5f5;
     border: 1px solid #e0e0e0;
@@ -68,6 +72,17 @@ QPushButton[text="保存配置"] {
 QPushButton[objectName="saveBtn"]:hover,
 QPushButton[text="保存配置"]:hover {
     background-color: #1565c0;
+}
+
+/* 录音按钮（动态属性 recording=true） */
+QPushButton[recording="true"] {
+    background-color: #e53935;
+    color: #ffffff;
+    border: 1px solid #e53935;
+}
+
+QPushButton[recording="true"]:hover {
+    background-color: #c62828;
 }
 
 /* 危险操作按钮 */
@@ -241,13 +256,23 @@ QCheckBox::indicator:checked {
 QMenuBar {
     background-color: #ffffff;
     border-bottom: 1px solid #e0e0e0;
-    padding: 2px;
+    padding: 2px 4px;
     color: #333333;
+    spacing: 2px;
+}
+
+QMenuBar::item {
+    background-color: transparent;
+    padding: 4px 8px;
 }
 
 QMenuBar::item:selected {
     background-color: #e3f2fd;
     color: #1976d2;
+}
+
+QMenuBar::item:pressed {
+    background-color: #bbdefb;
 }
 
 QMenu {

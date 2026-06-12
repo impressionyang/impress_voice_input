@@ -71,7 +71,7 @@ void FileTranscribePage::setupUI() {
     // 控制栏
     auto* controlLayout = new QHBoxLayout();
     startBtn_ = new QPushButton("开始转写", this);
-    startBtn_->setStyleSheet("QPushButton { font-weight: bold; padding: 8px 16px; }");
+    startBtn_->setObjectName("startTranscribeBtn");
     connect(startBtn_, &QPushButton::clicked, this, &FileTranscribePage::onStartTranscribe);
     controlLayout->addWidget(startBtn_);
 
