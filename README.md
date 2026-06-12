@@ -33,6 +33,19 @@
 6. 设置语音快捷键（默认长按 CapsLock）
 7. 状态栏右侧显示 <span style="color:#27ae60">**模型已就绪**</span> 即可开始使用
 
+### 模型下载
+
+本项目使用 **SenseVoice Small** 多语言语音识别模型（支持中文、英文、日语、韩语、粤语）。
+
+1. 访问 HuggingFace 模型仓库：
+   [csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tree/main)
+2. 下载以下两个文件：
+   - **`model.int8.onnx`** — 量化后的 ONNX 模型文件（约 76MB）
+   - **`tokens.txt`** — 词元表文件
+3. 将文件保存到本地任意目录，在应用 **配置** 页面中分别设置 **模型路径** 和 **词表路径** 指向这两个文件即可。
+
+![模型下载图示](docs/model_install.png)
+
 ## 使用说明
 
 ### 快捷键
