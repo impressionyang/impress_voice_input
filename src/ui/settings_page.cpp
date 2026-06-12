@@ -18,6 +18,9 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QDir>
+#include <QStandardPaths>
+#include <QFileInfoList>
 
 static const char* const kTag = "SettingsPage";
 
@@ -216,6 +219,26 @@ void SettingsPage::setupUI() {
     scrollArea->setWidget(contentWidget);
     mainLayout->addWidget(scrollArea);
 
+    // ---- 数据清理（固定不滚动） ----
+    auto* cleanGroup = new QGroupBox("数据清理", this);
+    cleanGroup->setStyleSheet("QGroupBox { margin-top: 4px; }");
+    auto* cleanLayout = new QHBoxLayout(cleanGroup);
+    cleanLayout->setContentsMargins(10, 10, 10, 10);
+
+    clearLogsBtn_ = new QPushButton("清除日志文件", cleanGroup);
+    clearLogsBtn_->setToolTip("删除日志目录下的所有 .log 文件");
+    connect(clearLogsBtn_, &QPushButton::clicked, this, &SettingsPage::onClearLogs);
+    cleanLayout->addWidget(clearLogsBtn_);
+
+    clearAudioBtn_ = new QPushButton("清除录音文件", cleanGroup);
+    clearAudioBtn_->setToolTip("删除调试音频目录下的所有 .wav 文件");
+    connect(clearAudioBtn_, &QPushButton::clicked, this, &SettingsPage::onClearAudioFiles);
+    cleanLayout->addWidget(clearAudioBtn_);
+
+    cleanLayout->addStretch();
+
+    mainLayout->addWidget(cleanGroup);
+
     // ---- 底部操作按钮（固定不滚动） ----
     auto* btnBar = new QWidget(this);
     auto* btnLayout = new QHBoxLayout(btnBar);
@@ -385,6 +408,84 @@ void SettingsPage::onResetConfig() {
         loadFromConfig();
         statusLabel_->setText("已恢复默认配置");
     }
+}
+
+void SettingsPage::onClearLogs() {
+    QString logDir = configManager_->get("app.log_dir").toString();
+    if (logDir.isEmpty()) {
+        logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    }
+
+    QDir dir(logDir);
+    if (!dir.exists()) {
+        QMessageBox::information(this, "清除日志", "日志目录不存在：" + logDir);
+        return;
+    }
+
+    auto result = clearDirectoryFiles(logDir, {"*.log"}, "日志文件");
+    if (result.deletedCount < 0) {
+        QMessageBox::warning(this, "清除日志", "清除失败，请检查目录权限");
+        return;
+    }
+    if (result.deletedCount == 0) {
+        QMessageBox::information(this, "清除日志", "没有可清除的日志文件");
+        return;
+    }
+    QMessageBox::information(this, "清除日志",
+        QString("已清除 %1 个日志文件，释放 %2 KB 空间")
+            .arg(result.deletedCount).arg(result.freedBytes / 1024));
+    statusLabel_->setText("日志文件已清除");
+}
+
+void SettingsPage::onClearAudioFiles() {
+    QString audioDir = configManager_->get("audio.debug_dir").toString();
+    if (audioDir.isEmpty()) {
+        audioDir = QDir::tempPath() + "/impress_audio_debug";
+    }
+
+    QDir dir(audioDir);
+    if (!dir.exists()) {
+        QMessageBox::information(this, "清除录音", "录音文件目录不存在：" + audioDir);
+        return;
+    }
+
+    auto result = clearDirectoryFiles(audioDir, {"*.wav"}, "录音文件");
+    if (result.deletedCount < 0) {
+        QMessageBox::warning(this, "清除录音", "清除失败，请检查目录权限");
+        return;
+    }
+    if (result.deletedCount == 0) {
+        QMessageBox::information(this, "清除录音", "没有可清除的录音文件");
+        return;
+    }
+    QMessageBox::information(this, "清除录音",
+        QString("已清除 %1 个录音文件，释放 %2 KB 空间")
+            .arg(result.deletedCount).arg(result.freedBytes / 1024));
+    statusLabel_->setText("录音文件已清除");
+}
+
+SettingsPage::CleanupResult SettingsPage::clearDirectoryFiles(
+        const QString& dirPath, const QStringList& filters, const QString& desc) {
+    QDir dir(dirPath);
+    if (!dir.exists()) return {-1, 0};
+
+    QFileInfoList files = dir.entryInfoList(filters, QDir::Files | QDir::NoDotAndDotDot);
+    if (files.isEmpty()) return {0, 0};
+
+    qint64 totalSize = 0;
+    int deletedCount = 0;
+
+    for (const auto& fi : files) {
+        totalSize += fi.size();
+        if (dir.remove(fi.fileName())) {
+            deletedCount++;
+        }
+    }
+
+    LOG_INFO(kTag, QString("已清除 %1/%2 个%3，释放 %4 KB")
+        .arg(deletedCount).arg(files.size()).arg(desc).arg(totalSize / 1024));
+
+    return {deletedCount, totalSize};
 }
 
 } // namespace impress

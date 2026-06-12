@@ -35,14 +35,22 @@ private slots:
     void onBrowseLogDir();
     void onSaveConfig();
     void onResetConfig();
+    void onClearLogs();
+    void onClearAudioFiles();
 
 private:
+    struct CleanupResult {
+        int deletedCount;
+        qint64 freedBytes;
+    };
+
     void setupUI();
     void loadFromConfig();
     void saveToConfig();
     void populateAudioDevices();
     void selectAudioDevice(int deviceIndex);
     int getSelectedAudioDeviceIndex() const;
+    CleanupResult clearDirectoryFiles(const QString& dirPath, const QStringList& filters, const QString& desc);
 
     ConfigManager* configManager_;
 
@@ -82,6 +90,10 @@ private:
 
     // 状态
     QLabel* statusLabel_;
+
+    // 数据清理
+    QPushButton* clearLogsBtn_;
+    QPushButton* clearAudioBtn_;
 };
 
 } // namespace impress
