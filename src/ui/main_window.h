@@ -45,6 +45,8 @@ private:
     void onVoiceInputConfigChanged();
     void updateModelStatus();
     void doExit();
+    void doRestart();
+    void showUsage();
 
     ConfigManager* configManager_;
     SenseVoiceEngine* sttEngine_;

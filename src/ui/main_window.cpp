@@ -23,6 +23,8 @@
 #include <QIcon>
 #include <QTimer>
 #include <QTabBar>
+#include <QProcess>
+#include <QTextBrowser>
 #ifdef Q_OS_WIN
 #include <windows.h>
 
@@ -210,6 +212,10 @@ void MainWindow::setupTrayIcon() {
         activateWindow();
         raise();
     });
+    auto* restartAction = trayMenu_->addAction("重启");
+    connect(restartAction, &QAction::triggered, this, [this]() {
+        doRestart();
+    });
     trayMenu_->addSeparator();
     auto* exitAction = trayMenu_->addAction("退出");
     connect(exitAction, &QAction::triggered, this, [this]() {
@@ -255,8 +261,11 @@ void MainWindow::setupMenuBar() {
     // 文件菜单
     auto* fileMenu = menuBar()->addMenu("文件");
 
-    auto* exportAction = fileMenu->addAction("导出结果");
-    exportAction->setShortcut(QKeySequence("Ctrl+E"));
+    auto* restartAction = fileMenu->addAction("重启");
+    restartAction->setShortcut(QKeySequence("Ctrl+R"));
+    connect(restartAction, &QAction::triggered, this, [this]() {
+        doRestart();
+    });
 
     fileMenu->addSeparator();
 
@@ -268,6 +277,14 @@ void MainWindow::setupMenuBar() {
 
     // 帮助菜单
     auto* helpMenu = menuBar()->addMenu("帮助");
+
+    auto* usageAction = helpMenu->addAction("使用说明");
+    usageAction->setShortcut(QKeySequence("F1"));
+    connect(usageAction, &QAction::triggered, this, [this] {
+        showUsage();
+    });
+
+    helpMenu->addSeparator();
 
     auto* aboutAction = helpMenu->addAction("关于");
     connect(aboutAction, &QAction::triggered, this, [this] {
@@ -302,6 +319,103 @@ void MainWindow::doExit() {
         trayIcon_->hide();
     }
     qApp->quit();
+}
+
+void MainWindow::doRestart() {
+    LOG_INFO(kTag, "应用重启");
+    if (voiceInputService_) {
+        voiceInputService_->stop();
+    }
+    if (trayIcon_) {
+        trayIcon_->hide();
+    }
+
+    QString appPath = qApp->applicationFilePath();
+#ifdef Q_OS_WIN
+    // Windows 使用 cmd /c start 启动，避免阻塞
+    QProcess::startDetached("cmd", {"/c", "start", "", "\"" + appPath + "\""});
+#else
+    QProcess::startDetached(appPath, {});
+#endif
+
+    qApp->quit();
+}
+
+void MainWindow::showUsage() {
+    const QString usageText =
+        "<h2>使用说明</h2>"
+        "<h3>一、基本功能</h3>"
+        "<p><b>实时语音识别：</b>按下快捷键开始录音，语音实时转为文字显示在识别结果区。</p>"
+        "<p><b>音频文件转写：</b>选择本地音频文件（支持 WAV/MP3/FLAC/OGG 等格式），点击<b>开始转写</b>即可将整个文件转为文字。</p>"
+        "<p><b>配置管理：</b>在配置页面设置模型路径、ONNX 线程数、识别语言、快捷键等参数。</p>"
+
+        "<h3>二、快捷键操作</h3>"
+        "<table cellpadding='4' cellspacing='0'>"
+        "<tr><td><b>语音输入</b></td><td>默认 F8（可在配置中自定义）</td></tr>"
+        "<tr><td><b>使用说明</b></td><td>F1</td></tr>"
+        "<tr><td><b>重启应用</b></td><td>Ctrl+R</td></tr>"
+        "<tr><td><b>退出应用</b></td><td>Ctrl+Q</td></tr>"
+        "</table>"
+
+        "<h3>三、语音输入使用流程</h3>"
+        "<ol>"
+        "<li>在<b>配置</b>页面中设置正确的 STT 模型路径并保存。</li>"
+        "<li>设置语音输入快捷键（如 F8）。</li>"
+        "<li>将光标定位到需要输入文字的目标应用（如微信、Word、浏览器等）。</li>"
+        "<li>按下快捷键开始说话，说完后再次按下快捷键停止。</li>"
+        "<li>识别的文字将通过模拟按键自动输入到目标应用中。</li>"
+        "</ol>"
+
+        "<h3>四、文件转写使用流程</h3>"
+        "<ol>"
+        "<li>切换到<b>音频文件转写</b>标签页。</li>"
+        "<li>点击<b>选择文件</b>按钮选择音频文件，支持拖放文件到窗口。</li>"
+        "<li>点击<b>开始转写</b>，等待处理完成。</li>"
+        "<li>转写结果显示在下方文本区，可点击<b>复制结果</b>复制到剪贴板，或点击<b>导出结果</b>保存为文本文件。</li>"
+        "</ol>"
+
+        "<h3>五、配置说明</h3>"
+        "<table cellpadding='4' cellspacing='0'>"
+        "<tr><td><b>模型路径</b></td><td>SenseVoice ONNX 模型文件路径（.onnx）</td></tr>"
+        "<tr><td><b>词表路径</b></td><td>Tokenizer 词表文件路径（tokens.txt）</td></tr>"
+        "<tr><td><b>推理设备</b></td><td>CPU / GPU（需 GPU 版本 ONNX Runtime）</td></tr>"
+        "<tr><td><b>线程数</b></td><td>ONNX 推理线程数，建议 2-4</td></tr>"
+        "<tr><td><b>语音快捷键</b></td><td>触发语音输入的快捷键</td></tr>"
+        "<tr><td><b>主题</b></td><td>深色 / 浅色界面主题</td></tr>"
+        "<tr><td><b>字体大小</b></td><td>全局界面字体大小</td></tr>"
+        "</table>"
+
+        "<h3>六、系统托盘</h3>"
+        "<p>关闭主窗口时程序最小化到系统托盘，托盘图标菜单支持：</p>"
+        "<ul>"
+        "<li><b>显示主窗口</b>：恢复主窗口显示</li>"
+        "<li><b>重启</b>：重启应用程序</li>"
+        "<li><b>退出</b>：完全退出程序</li>"
+        "</ul>"
+        "<p>双击托盘图标可快速显示主窗口。</p>"
+
+        "<h3>七、状态栏</h3>"
+        "<p>底部状态栏右侧显示 STT 模型加载状态：</p>"
+        "<ul>"
+        "<li><span style='color:#27ae60;font-weight:bold'>模型已就绪</span> — 模型加载成功，可以正常使用</li>"
+        "<li><span style='color:#e74c3c'>模型路径未设置</span> — 请在配置页面设置模型路径</li>"
+        "<li><span style='color:#e67e22'>模型加载失败</span> — 模型文件路径错误或文件损坏</li>"
+        "</ul>"
+
+        "<h3>八、常见问题</h3>"
+        "<p><b>Q: 语音输入没有反应？</b><br/>"
+        "A: 请确认：① 模型已加载（状态栏显示<span style='color:#27ae60;font-weight:bold'>模型已就绪</span>）；② 已设置语音快捷键；③ 麦克风正常工作。</p>"
+        "<p><b>Q: 识别文字没有输入到目标应用？</b><br/>"
+        "A: 某些应用可能拦截模拟按键输入，请尝试在管理员权限下运行本程序。</p>"
+        "<p><b>Q: 识别速度慢？</b><br/>"
+        "A: 在配置中增大 ONNX 线程数，或使用 GPU 版本的 ONNX Runtime。</p>";
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("使用说明");
+    msgBox.setTextFormat(Qt::RichText);
+    msgBox.setText(usageText);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.exec();
 }
 
 void MainWindow::updateModelStatus() {
