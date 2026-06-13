@@ -87,6 +87,7 @@ bool CapsLockVoiceHotkey::start() {
     QVariantMap options;
     options["handle_token"] = requestToken;
     options["session_handle_token"] = sessionToken;
+    options["app_id"] = "io.impress.voice-input";
 
     QDBusMessage reply = portal.call("CreateSession", options);
     if (reply.type() == QDBusMessage::ErrorMessage) {

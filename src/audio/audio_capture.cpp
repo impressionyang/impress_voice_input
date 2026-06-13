@@ -185,8 +185,25 @@ bool AudioCapture::start(int deviceIndex, int sampleRate, int bufferSizeMs) {
         // 选择设备
         int devIdx = deviceIndex < 0 ? Pa_GetDefaultInputDevice() : deviceIndex;
         if (devIdx < 0 || devIdx >= Pa_GetDeviceCount()) {
+            // 诊断：输出所有设备和 Host API 信息
             LOG_ERROR(kTag, QString("无效的音频设备索引: %1 (默认设备: %2)")
                 .arg(deviceIndex).arg(Pa_GetDefaultInputDevice()));
+            LOG_ERROR(kTag, QString("设备总数: %1, Host API 总数: %2")
+                .arg(Pa_GetDeviceCount()).arg(Pa_GetHostApiCount()));
+            for (int i = 0; i < Pa_GetDeviceCount(); i++) {
+                const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+                if (info) {
+                    LOG_DEBUG(kTag, QString("  设备 #%1: %2 (输入通道: %3, 采样率: %4)")
+                        .arg(i).arg(info->name).arg(info->maxInputChannels)
+                        .arg(info->defaultSampleRate));
+                }
+            }
+            if (Pa_GetDeviceCount() == 0) {
+                LOG_ERROR(kTag, "PortAudio 未检测到任何音频设备。"
+                    "请确认系统已安装 ALSA/PulseAudio/PipeWire 音频服务，"
+                    "并且 libasound2 库可用（Debian: sudo apt install libasound2, "
+                    "Fedora: sudo dnf install alsa-lib）。");
+            }
             return false;
         }
 
