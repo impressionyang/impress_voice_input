@@ -134,11 +134,12 @@ elseif(APPLE)
     list(APPEND HEADERS src/core/mac_hotkey.h src/core/mac_text_injector.h)
     add_compile_definitions(PLATFORM_MACOS)
 else()
-    # Linux 实现（D-Bus Portal + XTest）
+    # Linux 实现（libei + D-Bus Portal + XTest）
     list(APPEND SOURCES src/core/caps_lock_voice_hotkey.cpp src/core/wayland_text_injector.cpp)
     list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
     add_compile_definitions(PLATFORM_LINUX)
 endif()
+
 # Windows 使用 WIN32 标志隐藏启动控制台，并嵌入应用图标
 if(WIN32)
     add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS}
@@ -176,6 +177,28 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
+
+# ============================================================================
+# Linux: libei 全局快捷键（GNOME 47+）
+# ============================================================================
+if(NOT WIN32 AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(LIBEI QUIET libei-1.0)
+    endif()
+    if(LIBEI_FOUND)
+        find_library(LIBEI_LIB_PATH
+            NAMES ei
+            PATHS /usr/lib64 /usr/lib /usr/local/lib
+        )
+        if(LIBEI_LIB_PATH)
+            message(STATUS "找到 libei: ${LIBEI_LIB_PATH} (${LIBEI_VERSION})")
+            target_include_directories(${PROJECT_NAME} PRIVATE ${LIBEI_INCLUDE_DIRS})
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBEI_LIB_PATH})
+            add_compile_definitions(HAVE_LIBEI)
+        endif()
+    endif()
+endif()
 
 # ============================================================================
 # Windows DLL 复制（交叉编译时自动拷贝到输出目录）

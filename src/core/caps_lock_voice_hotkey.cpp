@@ -1,11 +1,18 @@
 #include "caps_lock_voice_hotkey.h"
 #include "utils/logger.h"
 
+#include <QSocketNotifier>
+
+#ifdef HAVE_LIBEI
+extern "C" {
+#include <libei.h>
+}
+#endif
+
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
-#include <QCoreApplication>
 #include <QUuid>
 
 static const char* const kTag = "CapsLockVoiceHotkey";
@@ -16,14 +23,24 @@ static const char* const kPortalObjectPath = "/org/freedesktop/portal/desktop";
 static const char* const kGlobalShortcutsIface = "org.freedesktop.portal.GlobalShortcuts";
 static const char* const kRequestIface = "org.freedesktop.portal.Request";
 
+// Linux CapsLock keycode (scan code)
+static const uint32_t kCapsLockKeycode = 58;
+
 namespace impress {
 
 struct CapsLockVoiceHotkey::Impl {
+    // Portal 相关
     QString sessionPath;
     QString pendingRequestPath;
 
     enum State { Idle, WaitingSession, WaitingBind, Active };
     State state = Idle;
+
+    // libei 相关
+#ifdef HAVE_LIBEI
+    struct ei* eiCtx = nullptr;
+    QSocketNotifier* socketNotifier = nullptr;
+#endif
 
     /** 生成唯一 token */
     static QString makeToken(const QString& prefix) {
@@ -57,10 +74,47 @@ CapsLockVoiceHotkey::~CapsLockVoiceHotkey() {
 bool CapsLockVoiceHotkey::start() {
     if (active_) return true;
 
+#ifdef HAVE_LIBEI
+    // 优先尝试 libei（GNOME 47+ 推荐方案）
+    LOG_INFO(kTag, "尝试 libei 后端...");
+    startLibei();
+    if (active_) {
+        LOG_INFO(kTag, "libei 快捷键已就绪");
+        return true;
+    }
+    LOG_INFO(kTag, "libei 不可用，回退到 Portal...");
+#endif
+
+    // 回退到 Portal（KDE 等支持 GlobalShortcuts 的桌面）
+    startPortal();
+    return active_;
+}
+
+void CapsLockVoiceHotkey::stop() {
+    if (!active_ && impl_->state == Impl::Idle) return;
+
+#ifdef HAVE_LIBEI
+    stopLibei();
+#endif
+    stopPortal();
+
+    active_ = false;
+    recording_ = false;
+    impl_->state = Impl::Idle;
+    impl_->sessionPath.clear();
+    LOG_INFO(kTag, "CapsLock 语音快捷键已停止");
+}
+
+// ============================================================================
+// Portal 后端（KDE 等支持 GlobalShortcuts 的桌面）
+// ============================================================================
+
+void CapsLockVoiceHotkey::startPortal() {
     QDBusConnection bus = Impl::bus();
     if (!bus.isConnected()) {
+        LOG_ERROR(kTag, "无法连接到 D-Bus session bus");
         emit error("无法连接到 D-Bus session bus");
-        return false;
+        return;
     }
 
     // 连接信号
@@ -93,7 +147,8 @@ bool CapsLockVoiceHotkey::start() {
     if (reply.type() == QDBusMessage::ErrorMessage) {
         emit error(QString("CreateSession 失败: %1").arg(reply.errorMessage()));
         LOG_ERROR(kTag, reply.errorMessage());
-        return false;
+        impl_->state = Impl::Idle;
+        return;
     }
 
     // 保存预期 session path
@@ -103,12 +158,9 @@ bool CapsLockVoiceHotkey::start() {
 
     LOG_INFO(kTag, "CreateSession 已发送，等待用户授权...");
     LOG_DEBUG(kTag, QString("Session path: %1").arg(impl_->sessionPath));
-    return true;
 }
 
-void CapsLockVoiceHotkey::stop() {
-    if (!active_ && impl_->state == Impl::Idle) return;
-
+void CapsLockVoiceHotkey::stopPortal() {
     QDBusConnection bus = Impl::bus();
     bus.disconnect(kPortalService, kPortalObjectPath,
         kGlobalShortcutsIface, "Activated",
@@ -119,12 +171,6 @@ void CapsLockVoiceHotkey::stop() {
     bus.disconnect(kPortalService, QString(),
         kRequestIface, "Response",
         this, SLOT(onPortalResponse(uint, QVariantMap)));
-
-    active_ = false;
-    recording_ = false;
-    impl_->state = Impl::Idle;
-    impl_->sessionPath.clear();
-    LOG_INFO(kTag, "CapsLock 语音快捷键已停止");
 }
 
 void CapsLockVoiceHotkey::onPortalResponse(uint response, const QVariantMap& results) {
@@ -199,11 +245,10 @@ void CapsLockVoiceHotkey::handleBindResponse(uint response, const QVariantMap&) 
         return;
     }
 
-    // 快捷键绑定成功
     active_ = true;
     impl_->state = Impl::Active;
     emit ready();
-    LOG_INFO(kTag, "快捷键已注册，CapsLock 语音输入已就绪");
+    LOG_INFO(kTag, "快捷键已注册（Portal），CapsLock 语音输入已就绪");
 }
 
 void CapsLockVoiceHotkey::handleActivated(const QString& shortcutId) {
@@ -219,5 +264,111 @@ void CapsLockVoiceHotkey::handleDeactivated(const QString& shortcutId) {
     recording_ = false;
     emit recordingStopped();
 }
+
+// ============================================================================
+// libei 后端（GNOME 47+）
+// ============================================================================
+
+#ifdef HAVE_LIBEI
+
+void CapsLockVoiceHotkey::startLibei() {
+    impl_->eiCtx = ei_new(this);
+    if (!impl_->eiCtx) {
+        LOG_ERROR(kTag, "ei_new 失败");
+        return;
+    }
+
+    ei_configure_name(impl_->eiCtx, "io.impress.voice-input");
+
+    int fd = ei_setup_backend_socket(impl_->eiCtx, nullptr);
+    if (fd < 0) {
+        LOG_ERROR(kTag, "ei_setup_backend_socket 失败，libei 不可用");
+        ei_unref(impl_->eiCtx);
+        impl_->eiCtx = nullptr;
+        return;
+    }
+
+    // 使用 QSocketNotifier 集成到 Qt 事件循环
+    impl_->socketNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+    connect(impl_->socketNotifier, &QSocketNotifier::activated,
+            this, &CapsLockVoiceHotkey::onLibeiEvent);
+
+    LOG_INFO(kTag, "libei 已连接，等待键盘事件...");
+
+    active_ = true;
+    impl_->state = Impl::Active;
+    emit ready();
+    LOG_INFO(kTag, "CapsLock 语音快捷键已就绪（libei）");
+}
+
+void CapsLockVoiceHotkey::stopLibei() {
+    if (impl_->socketNotifier) {
+        impl_->socketNotifier->setEnabled(false);
+        delete impl_->socketNotifier;
+        impl_->socketNotifier = nullptr;
+    }
+
+    if (impl_->eiCtx) {
+        ei_disconnect(impl_->eiCtx);
+        ei_unref(impl_->eiCtx);
+        impl_->eiCtx = nullptr;
+    }
+}
+
+void CapsLockVoiceHotkey::onLibeiEvent() {
+    if (!impl_->eiCtx) return;
+
+    struct ei_event* ev;
+    while ((ev = ei_get_event(impl_->eiCtx)) != nullptr) {
+        enum ei_event_type type = ei_event_get_type(ev);
+
+        switch (type) {
+        case EI_EVENT_KEYBOARD_KEY: {
+            uint32_t keycode = ei_event_keyboard_get_key(ev);
+            bool isPress = ei_event_keyboard_get_key_is_press(ev);
+
+            if (keycode == kCapsLockKeycode) {
+                if (ignoreEvents_) break;
+                if (isPress) {
+                    LOG_DEBUG(kTag, "libei: CapsLock 按下");
+                    recording_ = true;
+                    emit recordingStarted();
+                } else {
+                    LOG_DEBUG(kTag, "libei: CapsLock 松开");
+                    recording_ = false;
+                    emit recordingStopped();
+                }
+            }
+            break;
+        }
+
+        case EI_EVENT_DISCONNECT:
+            LOG_WARNING(kTag, "libei 连接已断开");
+            active_ = false;
+            break;
+
+        default:
+            break;
+        }
+
+        ei_event_unref(ev);
+    }
+}
+
+#else // HAVE_LIBEI
+
+void CapsLockVoiceHotkey::startLibei() {
+    LOG_WARNING(kTag, "libei 未编译启用");
+}
+
+void CapsLockVoiceHotkey::stopLibei() {
+    // nothing
+}
+
+void CapsLockVoiceHotkey::onLibeiEvent() {
+    // nothing
+}
+
+#endif // HAVE_LIBEI
 
 } // namespace impress
