@@ -2,20 +2,15 @@
 
 #include <QObject>
 #include <QString>
-#include <QTimer>
 #include <memory>
 
 namespace impress {
 
 /**
- * @brief CapsLock 长按语音输入快捷键管理器（Windows）
+ * @brief 全局语音输入快捷键管理器（Windows）
  *
  * 使用 Windows RegisterHotKey API 实现全局快捷键。
- * 工作流程：
- * 1. 用户长按 CapsLock 1 秒后触发录音
- * 2. 长按期间持续录音
- * 3. 松开 CapsLock 后停止录音并触发转写
- * 4. 短按（< 1s）直接传递 CapsLock 事件（切换大小写锁定）
+ * 切换模式：按一次开始录音，再按一次停止录音并转写。
  */
 class CapsLockVoiceHotkey : public QObject {
     Q_OBJECT
@@ -32,20 +27,19 @@ public:
     /** @brief 是否已激活 */
     bool isActive() const { return active_; }
 
-    /** @brief 当前是否正在录音（CapsLock 长按超过 1s 后） */
+    /** @brief 当前是否正在录音 */
     bool isRecording() const { return recording_; }
 
+    /** @brief 临时忽略信号 */
+    void setIgnoreEvents(bool ignore) { ignoreEvents_ = ignore; }
+
+    /** @brief 设置快捷键组合（如 "Ctrl+Alt+C"） */
+    void setHotkeyCombo(const QString& combo);
+
 signals:
-    /** @brief 开始录音（长按超过 1 秒后） */
     void recordingStarted();
-
-    /** @brief 停止录音（松开快捷键后） */
     void recordingStopped();
-
-    /** @brief 快捷键已注册 */
     void ready();
-
-    /** @brief 初始化失败 */
     void error(const QString& message);
 
     /** @brief 处理 WM_HOTKEY 事件（由原生事件过滤器调用） */
@@ -57,6 +51,14 @@ private:
     std::unique_ptr<Impl> impl_;
     bool active_ = false;
     bool recording_ = false;
+    bool ignoreEvents_ = false;
+    QString hotkeyCombo_;
+    int modifiers_ = 0x0002 | 0x0001;  // MOD_CONTROL | MOD_ALT
+    int vkKey_ = 'C';
+
+    void registerHotkey();
+    void unregisterHotkey();
+    void toggleRecording();
 };
 
 } // namespace impress
