@@ -306,7 +306,7 @@ void MainWindow::setupMenuBar() {
         QMessageBox::about(this, "关于",
             "<h2>Impress Voice Input</h2>"
             "<p>基于 ONNX 的实时语音转文本输入法</p>"
-            "<p>版本: 0.1.0</p>");
+            "<p>版本: 0.1.1</p>");
     });
 }
 

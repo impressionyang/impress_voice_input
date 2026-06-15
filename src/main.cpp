@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
 {
     impress::Application app(argc, argv);
     app.setApplicationName("Impress Voice Input");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.1.1");
     app.setOrganizationName("Impress");
 
     // 默认日志目录（配置加载后可能被覆盖）
