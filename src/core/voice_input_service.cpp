@@ -41,20 +41,6 @@ VoiceInputService::VoiceInputService(ConfigManager* configManager,
     , impl_(std::make_unique<Impl>())
 {
     impl_->sttEngine = sttEngine;
-
-    // 确认长按定时器 → 直接进入 Recording，消除 1s 延迟
-    longPressTimer_ = new QTimer(this);
-    longPressTimer_->setSingleShot(true);
-
-    // 松开后冷却定时器
-    cooldownTimer_ = new QTimer(this);
-    cooldownTimer_->setSingleShot(true);
-    connect(cooldownTimer_, &QTimer::timeout, this, [this]() {
-        if (state_ == Cooldown) {
-            state_ = Idle;
-            LOG_DEBUG(kTag, "Cooldown → Idle (冷却结束)");
-        }
-    });
 }
 
 VoiceInputService::~VoiceInputService() {
@@ -80,6 +66,11 @@ bool VoiceInputService::start() {
 
     // 3. 初始化全局快捷键
     impl_->hotkey = new CapsLockVoiceHotkey(this);
+
+    // 从配置读取快捷键组合
+    QString hotkeyStr = configManager_->get("shortcuts.voice_hotkey").toString();
+    impl_->hotkey->setHotkeyCombo(hotkeyStr);
+
     connect(impl_->hotkey, &CapsLockVoiceHotkey::recordingStarted,
             this, &VoiceInputService::onHotkeyActivated);
     connect(impl_->hotkey, &CapsLockVoiceHotkey::recordingStopped,
@@ -90,6 +81,15 @@ bool VoiceInputService::start() {
             });
     connect(impl_->hotkey, &CapsLockVoiceHotkey::error,
             this, &VoiceInputService::error);
+
+    // 监听配置变化更新快捷键
+    connect(configManager_, &ConfigManager::configChanged, this, [this]() {
+        QString hotkeyStr = configManager_->get("shortcuts.voice_hotkey").toString();
+        LOG_INFO(kTag, QString("配置变更: voice_hotkey=%1").arg(hotkeyStr));
+        if (impl_->hotkey) {
+            impl_->hotkey->setHotkeyCombo(hotkeyStr);
+        }
+    });
 
     // 4. 初始化文本注入器
     impl_->injector = new WaylandTextInjector(this);
@@ -114,9 +114,6 @@ bool VoiceInputService::start() {
 void VoiceInputService::stop() {
     if (!running_) return;
 
-    longPressTimer_->stop();
-    cooldownTimer_->stop();
-
     if (impl_->audioCapture) {
         impl_->audioCapture->stopAndClose();  // 彻底关闭流
     }
@@ -133,13 +130,13 @@ void VoiceInputService::stop() {
 }
 
 void VoiceInputService::onHotkeyActivated() {
-    // Recording 和 Cooldown 状态：屏蔽所有 Activated（防抖核心）
+    // Recording 和 Cooldown 状态：屏蔽所有 Activated（防抖）
     if (state_ == Recording || state_ == Cooldown) {
         LOG_DEBUG(kTag, QString("忽略 Activated (state=%1)").arg(state_ == Recording ? "Recording" : "Cooldown"));
         return;
     }
 
-    // Idle → 直接进入 Recording，消除 1s 延迟
+    // Idle → 直接进入 Recording
     state_ = Recording;
     recording_ = true;
     audioBuffer_.clear();
@@ -149,21 +146,20 @@ void VoiceInputService::onHotkeyActivated() {
     int bufferSizeMs = configManager_->get("audio.buffer_size_ms").toInt();
     impl_->audioCapture->start(deviceIndex, sampleRate, bufferSizeMs);
 
-    // 延迟统计（现在应该接近 0）
     hotkeyLatencyTimer_.start();
     latencyTracking_ = true;
     qint64 latencyMs = 0;
 
-    LOG_DEBUG(kTag, "Idle → Recording (立即开始录音)");
+    LOG_DEBUG(kTag, "→ Recording (开始录音)");
     emit statusChanged("正在录音...");
 
-    // 统计打印
+    // 统计
     totalKeyCount_++;
     totalLatencyMs_ += latencyMs;
     maxLatencyMs_ = std::max(maxLatencyMs_, (double)latencyMs);
     minLatencyMs_ = std::min(minLatencyMs_, (double)latencyMs);
     double avgMs = totalLatencyMs_ / totalKeyCount_;
-    LOG_INFO(kTag, QString("⏱ 按键→录音延迟: %1ms (平均: %2ms, 最小: %3ms, 最大: %4ms, 累计: %5次)")
+    LOG_INFO(kTag, QString("⏱ 快捷键→录音延迟: %1ms (平均: %2ms, 最小: %3ms, 最大: %4ms, 累计: %5次)")
         .arg(latencyMs).arg(avgMs, 0, 'f', 0)
         .arg(minLatencyMs_, 0, 'f', 0).arg(maxLatencyMs_, 0, 'f', 0)
         .arg(totalKeyCount_));
@@ -171,14 +167,13 @@ void VoiceInputService::onHotkeyActivated() {
 }
 
 void VoiceInputService::onHotkeyDeactivated() {
-    // Cooldown 状态的 Deactivated → 忽略
+    // Cooldown 状态忽略
     if (state_ == Cooldown) {
         LOG_DEBUG(kTag, "忽略 Deactivated (Cooldown)");
         return;
     }
 
     recording_ = false;
-    longPressTimer_->stop();
 
     // 停止音频采集
     if (impl_->audioCapture && impl_->audioCapture->isRunning()) {
@@ -186,15 +181,20 @@ void VoiceInputService::onHotkeyDeactivated() {
     }
 
     if (state_ == Recording) {
-        // 松开 → 开始识别（CapsLock 灯在识别完成后复位，避免重复）
         state_ = Idle;
-        LOG_DEBUG(kTag, "Recording → Idle (松开转写)");
+        LOG_DEBUG(kTag, "Recording → Idle (停止转写)");
         stopRecordingAndTranscribe();
     }
 
     // 启动冷却期
     state_ = Cooldown;
-    cooldownTimer_->start(releaseCooldownMs_);
+    // 用单次 QTimer 实现冷却
+    QTimer::singleShot(releaseCooldownMs_, this, [this]() {
+        if (state_ == Cooldown) {
+            state_ = Idle;
+            LOG_DEBUG(kTag, "Cooldown → Idle (冷却结束)");
+        }
+    });
     LOG_DEBUG(kTag, QString("→ Cooldown (%1ms)").arg(releaseCooldownMs_));
 }
 
@@ -207,8 +207,6 @@ void VoiceInputService::onAudioData(const std::vector<float>& samples, int sampl
 
 void VoiceInputService::stopRecordingAndTranscribe() {
     if (audioBuffer_.empty()) {
-        // 无音频 → 复位 CapsLock 灯
-        simulateCapsLock();
         emit statusChanged("未检测到音频输入");
         return;
     }
@@ -237,9 +235,6 @@ void VoiceInputService::stopRecordingAndTranscribe() {
 }
 
 void VoiceInputService::onRecognitionComplete(const QString& text) {
-    // 识别完成后，复位 CapsLock 灯
-    simulateCapsLock();
-
     if (text.isEmpty()) {
         emit statusChanged("识别结果：无语音输入");
         return;
@@ -255,27 +250,6 @@ void VoiceInputService::onRecognitionComplete(const QString& text) {
     } else {
         LOG_WARNING(kTag, "文本注入器未就绪，无法注入");
     }
-}
-
-void VoiceInputService::simulateCapsLock() {
-#ifndef PLATFORM_WINDOWS
-    // XTest 模拟的按键会被 D-Bus portal 再次捕获，导致 Activated/Deactivated 信号。
-    // 在模拟期间屏蔽 portal 信号，防止状态机被打断。
-    if (impl_->hotkey) {
-        impl_->hotkey->setIgnoreEvents(true);
-    }
-#endif
-    if (impl_->injector && impl_->injector->isInitialized()) {
-        impl_->injector->simulateKeysym(0xffe5);
-        LOG_DEBUG(kTag, "模拟 CapsLock 按键");
-    } else {
-        LOG_WARNING(kTag, "文本注入器未初始化，无法模拟 CapsLock");
-    }
-#ifndef PLATFORM_WINDOWS
-    if (impl_->hotkey) {
-        impl_->hotkey->setIgnoreEvents(false);
-    }
-#endif
 }
 
 } // namespace impress

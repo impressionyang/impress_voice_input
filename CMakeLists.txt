@@ -79,6 +79,7 @@ set(SOURCES
     src/ui/widgets/text_output.cpp
     src/ui/widgets/progress_panel.cpp
     src/ui/widgets/hotkey_recorder.cpp
+    src/ui/widgets/recording_indicator.cpp
 
     # Utils
     src/utils/logger.cpp
@@ -114,6 +115,7 @@ set(HEADERS
     src/ui/widgets/text_output.h
     src/ui/widgets/progress_panel.h
     src/ui/widgets/hotkey_recorder.h
+    src/ui/widgets/recording_indicator.h
 
     src/utils/logger.h
     src/utils/timer.h
@@ -134,9 +136,21 @@ elseif(APPLE)
     list(APPEND HEADERS src/core/mac_hotkey.h src/core/mac_text_injector.h)
     add_compile_definitions(PLATFORM_MACOS)
 else()
-    # Linux 实现（libei + D-Bus Portal + XTest）
-    list(APPEND SOURCES src/core/caps_lock_voice_hotkey.cpp src/core/wayland_text_injector.cpp)
-    list(APPEND HEADERS src/core/caps_lock_voice_hotkey.h src/core/wayland_text_injector.h)
+    # Linux 实现（X11 XGrabKey / evdev / libei / D-Bus Portal）
+    list(APPEND SOURCES
+        src/core/caps_lock_voice_hotkey.cpp
+        src/core/caps_lock_backend.cpp
+        src/core/caps_lock_xcb.cpp
+        src/core/caps_lock_evdev.cpp
+        src/core/wayland_text_injector.cpp
+    )
+    list(APPEND HEADERS
+        src/core/caps_lock_voice_hotkey.h
+        src/core/caps_lock_backend.h
+        src/core/caps_lock_xcb.h
+        src/core/caps_lock_evdev.h
+        src/core/wayland_text_injector.h
+    )
     add_compile_definitions(PLATFORM_LINUX)
 endif()
 
@@ -201,6 +215,26 @@ if(NOT WIN32 AND NOT APPLE)
 endif()
 
 # ============================================================================
+# Linux: X11 全局快捷键（XCB XGrabKey）
+# ============================================================================
+if(NOT WIN32 AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(XCB QUIET xcb)
+        pkg_check_modules(X11 QUIET x11)
+    endif()
+    if(XCB_FOUND AND X11_FOUND)
+        message(STATUS "找到 XCB: ${XCB_LIBDIR}")
+        message(STATUS "找到 X11: ${X11_LIBDIR}")
+        target_include_directories(${PROJECT_NAME} PRIVATE ${XCB_INCLUDE_DIRS} ${X11_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${XCB_LIBRARIES} ${X11_LIBRARIES})
+        add_compile_definitions(HAVE_XCB)
+    else()
+        message(STATUS "XCB/X11 未找到，X11 全局快捷键不可用")
+    endif()
+endif()
+
+# ============================================================================
 # Windows DLL 复制（交叉编译时自动拷贝到输出目录）
 # ============================================================================
 if(WIN32)
@@ -238,6 +272,17 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
     BUNDLE DESTINATION .
 )
+
+# GNOME Shell 扩展
+if(NOT WIN32 AND NOT APPLE)
+    set(GNOME_EXT_UUID "io.impress.voice-input-hotkey@impress")
+    set(GNOME_EXT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/gnome-extension/${GNOME_EXT_UUID}")
+    set(GNOME_EXT_DST "${CMAKE_INSTALL_PREFIX}/share/gnome-shell/extensions/${GNOME_EXT_UUID}")
+
+    install(FILES "${GNOME_EXT_SRC}/extension.js"
+                  "${GNOME_EXT_SRC}/metadata.json"
+            DESTINATION share/gnome-shell/extensions/${GNOME_EXT_UUID})
+endif()
 
 # ============================================================================
 # 测试

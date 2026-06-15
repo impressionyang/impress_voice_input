@@ -7,6 +7,7 @@
 #include "app/config_manager.h"
 #include "app/application.h"
 #include "utils/logger.h"
+#include "widgets/recording_indicator.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -123,6 +124,17 @@ MainWindow::MainWindow(ConfigManager* configManager,
                 LOG_INFO(kTag, QString("语音识别结果: %1").arg(text));
             });
     LOG_INFO(kTag, "VoiceInputService 已创建");
+
+    // 创建录音指示器
+    recordingIndicator_ = new RecordingIndicator(this);
+    connect(voiceInputService_, &VoiceInputService::statusChanged,
+            this, [this](const QString& status) {
+                if (status.contains("正在录音")) {
+                    recordingIndicator_->showAtCursor();
+                } else {
+                    recordingIndicator_->hide();
+                }
+            });
 
     // 监听配置变化，动态启停语音输入服务
     connect(configManager_, &ConfigManager::configChanged,
@@ -352,7 +364,7 @@ void MainWindow::showUsage() {
 
         "<h3>二、快捷键操作</h3>"
         "<table cellpadding='4' cellspacing='0'>"
-        "<tr><td><b>语音输入</b></td><td>长按 CapsLock 超过 1 秒（可在配置中自定义）</td></tr>"
+        "<tr><td><b>语音输入</b></td><td>Ctrl+Alt+C（切换模式，可在配置中自定义）</td></tr>"
         "<tr><td><b>使用说明</b></td><td>F1</td></tr>"
         "<tr><td><b>重启应用</b></td><td>Ctrl+R</td></tr>"
         "<tr><td><b>退出应用</b></td><td>Ctrl+Q</td></tr>"
@@ -361,12 +373,12 @@ void MainWindow::showUsage() {
         "<h3>三、语音输入使用流程</h3>"
         "<ol>"
         "<li>在<b>配置</b>页面中设置正确的 STT 模型路径并保存。</li>"
-        "<li>设置语音输入快捷键（默认长按 CapsLock）。</li>"
+        "<li>语音输入快捷键默认为 Ctrl+Alt+C（可在配置中自定义）。</li>"
         "<li>将光标定位到需要输入文字的目标应用（如微信、Word、浏览器等）。</li>"
-        "<li>长按快捷键开始说话，说完后松开快捷键。</li>"
+        "<li>按下快捷键开始录音，说完后再次按下快捷键停止录音并自动转写。</li>"
         "<li>识别的文字将通过模拟按键自动输入到目标应用中。</li>"
         "</ol>"
-        "<p><b>CapsLock 工作模式：</b>短按（&lt;1 秒）正常切换大小写锁定；长按（&gt;1 秒）触发语音输入，松开后自动识别并注入文字。</p>"
+        "<p><b>切换模式：</b>第一次按下快捷键开始录音（光标位置显示录音指示器），再次按下停止录音并自动转写。</p>"
 
         "<h3>四、文件转写使用流程</h3>"
         "<ol>"
@@ -412,8 +424,8 @@ void MainWindow::showUsage() {
         "A: 某些应用可能拦截模拟按键输入，请尝试在管理员权限下运行本程序。</p>"
         "<p><b>Q: 识别速度慢？</b><br/>"
         "A: 在配置中增大 ONNX 线程数，或使用 GPU 版本的 ONNX Runtime。</p>"
-        "<p><b>Q: CapsLock 短按不起作用？</b><br/>"
-        "A: 请确保按键时间小于 1 秒，超过 1 秒会触发语音输入模式。</p>";
+        "<p><b>Q: 快捷键不生效？</b><br/>"
+        "A: 检查是否与其他应用快捷键冲突，或在配置中修改为其他组合键。</p>";
 
     // 使用可调整大小、可滚动的 QDialog 替代 QMessageBox
     QDialog* dialog = new QDialog(this);

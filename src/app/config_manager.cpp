@@ -96,7 +96,7 @@ void ConfigManager::loadDefaults() {
                 {"show_confidence", true}
             }},
             {"shortcuts", QVariantMap{
-                {"voice_hotkey", "CapsLock"}
+                {"voice_hotkey", "Ctrl+Alt+C"}
             }}
         };
     }

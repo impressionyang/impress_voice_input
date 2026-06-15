@@ -17,6 +17,7 @@ class STTTestPage;
 class FileTranscribePage;
 class SettingsPage;
 class VoiceInputService;
+class RecordingIndicator;
 
 /**
  * @brief 主窗口
@@ -60,6 +61,7 @@ private:
     QMenu* trayMenu_ = nullptr;
     QIcon idleIcon_;   // SP_MediaStop — 就绪/停止
     QIcon activeIcon_; // SP_MediaPlay — 录音/识别
+    RecordingIndicator* recordingIndicator_ = nullptr;
 };
 
 } // namespace impress

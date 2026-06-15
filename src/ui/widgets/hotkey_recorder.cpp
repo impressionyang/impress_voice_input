@@ -1,9 +1,12 @@
 #include "hotkey_recorder.h"
+#include "utils/logger.h"
 
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
+
+static const char* const kTag = "HotkeyRecorder";
 
 namespace impress {
 
@@ -19,11 +22,12 @@ HotkeyRecorder::HotkeyRecorder(const QString& label, QWidget* parent)
     btn_ = new QPushButton(this);
     btn_->setMinimumWidth(140);
     btn_->setFocusPolicy(Qt::StrongFocus);
+    btn_->installEventFilter(this);  // 拦截按钮的键盘事件
     connect(btn_, &QPushButton::clicked, this, &HotkeyRecorder::onToggleRecording);
     layout->addWidget(btn_);
     layout->addStretch();
 
-    setHotkeyText("CapsLock");
+    setHotkeyText("Ctrl+Alt+C");
     applyStyle();
 }
 
@@ -44,11 +48,13 @@ void HotkeyRecorder::onToggleRecording() {
     if (recording_) {
         // 取消录制
         recording_ = false;
+        LOG_INFO(kTag, "录制模式已取消");
         updateDisplay();
         applyStyle();
     } else {
         // 进入录制模式
         recording_ = true;
+        LOG_INFO(kTag, "进入录制模式，等待按键...");
         updateDisplay();
         applyStyle();
         btn_->setFocus();
@@ -61,15 +67,18 @@ bool HotkeyRecorder::eventFilter(QObject* obj, QEvent* event) {
 
     if (event->type() == QEvent::KeyPress) {
         auto* ke = static_cast<QKeyEvent*>(event);
+        LOG_INFO(kTag, QString("捕获按键: key=%1 modifiers=%2").arg(ke->key()).arg(static_cast<int>(ke->modifiers())));
 
         // 忽略单独的修饰键
         if (ke->key() == Qt::Key_Control || ke->key() == Qt::Key_Alt ||
             ke->key() == Qt::Key_Shift || ke->key() == Qt::Key_Meta) {
+            LOG_DEBUG(kTag, "忽略单独修饰键");
             return true;
         }
 
         // Esc 取消录制
         if (ke->key() == Qt::Key_Escape) {
+            LOG_INFO(kTag, "Esc 取消录制");
             recording_ = false;
             updateDisplay();
             applyStyle();
@@ -94,6 +103,7 @@ bool HotkeyRecorder::eventFilter(QObject* obj, QEvent* event) {
 
         hotkeyText_ = text;
         recording_ = false;
+        LOG_INFO(kTag, QString("快捷键已设置: %1").arg(hotkeyText_));
         updateDisplay();
         applyStyle();
         btn_->releaseKeyboard();
