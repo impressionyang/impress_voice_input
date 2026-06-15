@@ -1,0 +1,8 @@
+{
+    "uuid": "io.impress.voice-input-hotkey@impress",
+    "name": "Impress Voice Input Hotkey",
+    "description": "Provides CapsLock global key events for Impress Voice Input via D-Bus",
+    "version": 1,
+    "shell-version": ["46", "47", "48", "50"],
+    "url": "https://gitea.impressionyang.top/impressionyang/impress_voice_input"
+}
